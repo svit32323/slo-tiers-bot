@@ -12,28 +12,39 @@ const client = new Client({
 });
 
 client.once("ready", () => {
-  console.log(`✅ Bot prijavljen kot ${client.user.tag}`);
+  console.log(`✅ BOT ONLINE: ${client.user.tag}`);
 });
 
 client.on("messageCreate", async (message) => {
-  // Ignoriraj sporočila brez embedov
-  if (!message.embeds.length) return;
+  console.log(
+    `📩 MESSAGE | ${message.author?.tag} | #${message.channel?.name}`
+  );
+
+  // Če ni embeda
+  if (message.embeds.length === 0) {
+    console.log("➡️ Brez embeda");
+    return;
+  }
+
+  console.log(`🎯 ${message.embeds.length} EMBED(S) ZAZNANI`);
 
   for (const embed of message.embeds) {
-    // Preveri, ali je to naš SloTiers rezultat
-    if (embed.title !== "SloTiers Rezultat Testiranja") continue;
-
-    console.log("🎯 Zaznan SloTiers rezultat!");
-
-    const fields = embed.fields || [];
-
-    for (const field of fields) {
-      console.log(`${field.name}: ${field.value}`);
-    }
-
-    console.log("📦 Celoten embed:");
+    console.log("📦 EMBED:");
     console.log(JSON.stringify(embed.toJSON(), null, 2));
+
+    // Prepoznaj SloTiers rezultat
+    if (embed.title === "SloTiers Rezultat Testiranja") {
+      console.log("🔥 SLOTIERS REZULTAT ZAZNAN!");
+
+      for (const field of embed.fields ?? []) {
+        console.log(`➡️ ${field.name}: ${field.value}`);
+      }
+    }
   }
+});
+
+client.on("error", (error) => {
+  console.error("❌ DISCORD ERROR:", error);
 });
 
 client.login(process.env.DISCORD_BOT_TOKEN);
