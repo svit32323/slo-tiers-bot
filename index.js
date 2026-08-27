@@ -15,30 +15,20 @@ client.once("ready", () => {
   console.log(`✅ BOT ONLINE: ${client.user.tag}`);
 });
 
-client.on("messageCreate", async (message) => {
+client.on("messageCreate", (message) => {
   console.log(
-    `📩 MESSAGE | ${message.author?.tag} | #${message.channel?.name}`
+    `📩 MESSAGE | ${message.author.tag} | #${message.channel.name} | ${message.content}`
   );
 
-  // Če ni embeda
-  if (message.embeds.length === 0) {
-    console.log("➡️ Brez embeda");
-    return;
-  }
+  if (message.author.bot) return;
 
-  console.log(`🎯 ${message.embeds.length} EMBED(S) ZAZNANI`);
+  if (message.embeds.length > 0) {
+    console.log(`🎯 EMBED ZAZNAN: ${message.embeds.length}`);
 
-  for (const embed of message.embeds) {
-    console.log("📦 EMBED:");
-    console.log(JSON.stringify(embed.toJSON(), null, 2));
-
-    // Prepoznaj SloTiers rezultat
-    if (embed.title === "SloTiers Rezultat Testiranja") {
-      console.log("🔥 SLOTIERS REZULTAT ZAZNAN!");
-
-      for (const field of embed.fields ?? []) {
-        console.log(`➡️ ${field.name}: ${field.value}`);
-      }
+    for (const embed of message.embeds) {
+      console.log(
+        JSON.stringify(embed.toJSON(), null, 2)
+      );
     }
   }
 });
