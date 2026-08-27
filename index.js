@@ -10,12 +10,14 @@ const client = new Client({
   ]
 });
 
-console.log("Starting SloTiers Discord Bot V4");
+console.log("Starting SloTiers Discord Bot V5");
 
 client.once("ready", function () {
-  console.log("SLOTIERS BOT V4 ONLINE");
+  console.log("=================================");
+  console.log("SLOTIERS BOT V5 ONLINE");
   console.log("Bot: " + client.user.tag);
   console.log("Servers: " + client.guilds.cache.size);
+  console.log("=================================");
 });
 
 client.on("messageCreate", async function (message) {
@@ -27,7 +29,7 @@ client.on("messageCreate", async function (message) {
     console.log("Content: " + (message.content || "(empty)"));
     console.log("Embeds: " + message.embeds.length);
 
-    if (!message.embeds.length) {
+    if (message.embeds.length === 0) {
       return;
     }
 
@@ -35,8 +37,10 @@ client.on("messageCreate", async function (message) {
       console.log("EMBED FOUND");
       console.log("Title: " + (embed.title || "null"));
 
-      for (const field of embed.fields || []) {
-        console.log(field.name + ": " + field.value);
+      if (embed.fields && embed.fields.length > 0) {
+        for (const field of embed.fields) {
+          console.log(field.name + ": " + field.value);
+        }
       }
 
       if (
@@ -55,59 +59,76 @@ client.on("messageCreate", async function (message) {
       let testerId = "";
       let notes = "";
 
-      for (const field of embed.fields || []) {
+      const fields = embed.fields || [];
+
+      for (const field of fields) {
         const name = String(field.name || "").toLowerCase();
         const value = String(field.value || "").trim();
 
         if (name.includes("igralec") || name.includes("player")) {
-          const mention = value.match(/<@!?([0-9]+)>/);
+          const mentionStart = value.indexOf("<@");
+          const mentionEnd = value.indexOf(">");
 
-          if (mention) {
-            playerId = mention[1];
+          if (mentionStart !== -1 && mentionEnd !== -1) {
+            const mentionText = value.substring(mentionStart, mentionEnd + 1);
+            playerId = mentionText
+              .replace("<@", "")
+              .replace("!", "")
+              .replace(">", "");
           }
 
-          const open = value.indexOf("(");
-          const close = value.lastIndexOf(")");
+          const firstBacktick = value.indexOf(String.fromCharCode(96));
+          const secondBacktick =
+            firstBacktick !== -1
+              ? value.indexOf(String.fromCharCode(96), firstBacktick + 1)
+              : -1;
 
-          if (open !== -1 && close > open) {
-            const inside = value.substring(open + 1, close).trim();
-
-            if (inside.startsWith("`") && inside.endsWith("`")) {
-              ign = inside.substring(1, inside.length - 1);
-            } else {
-              ign = inside;
-            }
+          if (firstBacktick !== -1 && secondBacktick !== -1) {
+            ign = value.substring(firstBacktick + 1, secondBacktick);
           }
         }
 
         if (
           name.includes("način boja") ||
-          name.includes("način") ||
+          name === "način" ||
           name.includes("gamemode") ||
-          name.includes("mode")
+          name === "mode"
         ) {
           mode = value;
         }
 
-        if (
-          name.includes("dosežen tier") ||
-          name.includes("tier") ||
-          name.includes("achieved tier")
-        ) {
-          const tierMatch = value.match(
-            (/\b(?:HT1|LT1|HT2|LT2|HT3|LT3|HT4|LT4|HT5|LT5)\b/i);
-          );
+        if (name.includes("dosežen tier") || name === "tier") {
+          const tierNames = [
+            "HT1",
+            "LT1",
+            "HT2",
+            "LT2",
+            "HT3",
+            "LT3",
+            "HT4",
+            "LT4",
+            "HT5",
+            "LT5"
+          ];
 
-          if (tierMatch) {
-            tier = tierMatch[0].toUpperCase();
+          for (const tierName of tierNames) {
+            if (value.toUpperCase().includes(tierName)) {
+              tier = tierName;
+              break;
+            }
           }
         }
 
         if (name.includes("tester") || name.includes("tested by")) {
-          const mention = value.match(/<@!?([0-9]+)>/);
+          const mentionStart = value.indexOf("<@");
+          const mentionEnd = value.indexOf(">");
 
-          if (mention) {
-            testerId = mention[1];
+          if (mentionStart !== -1 && mentionEnd !== -1) {
+            const mentionText = value.substring(mentionStart, mentionEnd + 1);
+            testerId = mentionText
+              .replace("<@", "")
+              .replace("!", "")
+              .replace(">", "");
           }
         }
 
@@ -120,8 +141,8 @@ client.on("messageCreate", async function (message) {
         }
       }
 
-      console.log("PARSED RESULT");
       console.log("-------------------------");
+      console.log("PARSED RESULT");
       console.log("Player ID: " + playerId);
       console.log("IGN: " + ign);
       console.log("Mode: " + mode);
@@ -142,6 +163,16 @@ client.on("messageCreate", async function (message) {
 
       console.log("Sending result to SloTiers");
 
+      const payload = {
+        embeds: [
+          {
+            title: embed.title || null,
+            description: embed.description || null,
+            fields: embed.fields || []
+          }
+        ]
+      };
+
       const response = await fetch(
         "https://slotiers.hatchable.site/api/discord/ranking",
         {
@@ -150,15 +181,7 @@ client.on("messageCreate", async function (message) {
             "Content-Type": "application/json",
             "x-discord-ingest-secret": process.env.DISCORD_INGEST_SECRET
           },
-          body: JSON.stringify({
-            embeds: [
-              {
-                title: embed.title,
-                description: embed.description,
-                fields: embed.fields
-              }
-            ]
-          })
+          body: JSON.stringify(payload)
         }
       );
 
@@ -180,7 +203,7 @@ client.on("messageCreate", async function (message) {
 });
 
 client.on("error", function (error) {
-  console.error("DISCORD ERROR");
+  console.error("DISCORD CLIENT ERROR");
   console.error(error);
 });
 
