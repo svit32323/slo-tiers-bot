@@ -1,10 +1,7 @@
 
 
-  ```js
-const {
-  Client,
-  GatewayIntentBits
-} = require("discord.js");
+```js
+const { Client, GatewayIntentBits } = require("discord.js");
 
 const client = new Client({
   intents: [
@@ -33,9 +30,7 @@ client.on("messageCreate", async (message) => {
     console.log(`Content: ${message.content || "(empty)"}`);
     console.log(`Embeds: ${message.embeds.length}`);
 
-    if (!message.embeds.length) {
-      return;
-    }
+    if (!message.embeds.length) return;
 
     for (const embed of message.embeds) {
       console.log("🎯 EMBED FOUND");
@@ -131,6 +126,11 @@ client.on("messageCreate", async (message) => {
 
       if (!ign || !mode || !tier) {
         console.log("⚠️ Result is missing required data.");
+        continue;
+      }
+
+      if (!process.env.DISCORD_INGEST_SECRET) {
+        console.error("❌ DISCORD_INGEST_SECRET is missing!");
         return;
       }
 
@@ -152,8 +152,7 @@ client.on("messageCreate", async (message) => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-discord-ingest-secret":
-              process.env.DISCORD_INGEST_SECRET
+            "x-discord-ingest-secret": process.env.DISCORD_INGEST_SECRET
           },
           body: JSON.stringify(payload)
         }
@@ -203,4 +202,3 @@ if (!process.env.DISCORD_INGEST_SECRET) {
 
 client.login(process.env.DISCORD_BOT_TOKEN);
 ```
-
