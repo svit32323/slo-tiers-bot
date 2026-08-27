@@ -3,7 +3,7 @@ const {
   GatewayIntentBits
 } = require("discord.js");
 
-console.log("🚀 SLOTIERS BOT V2 - STARTING");
+console.log("🚀 SLOTIERS BOT V3 - STARTING");
 
 const client = new Client({
   intents: [
@@ -15,43 +15,82 @@ const client = new Client({
 
 client.once("clientReady", () => {
   console.log("=================================");
-  console.log("🔥 SLOTIERS BOT V2 ONLINE");
+  console.log("🔥 SLOTIERS BOT V3 ONLINE");
   console.log(`🤖 Bot: ${client.user.tag}`);
   console.log(`🏠 Servers: ${client.guilds.cache.size}`);
   console.log("=================================");
 });
 
-client.on("messageCreate", (message) => {
-  console.log("📩 V2 MESSAGE EVENT");
+client.on("messageCreate", async (message) => {
+  if (message.author.bot) return;
 
-  console.log("User:", message.author?.tag);
-  console.log("Channel:", message.channel?.name);
-  console.log("Message:", message.content);
-  console.log("Embeds:", message.embeds.length);
+  if (!message.embeds.length) return;
 
-  if (message.embeds.length > 0) {
-    console.log("🎯 V2 EMBED DETECTED");
+  for (const embed of message.embeds) {
+    if (!embed.title?.includes("SloTiers Rezultat Testiranja")) {
+      continue;
+    }
 
-    message.embeds.forEach((embed, index) => {
-      console.log(`--- EMBED ${index + 1} ---`);
-      console.log("Title:", embed.title);
-      console.log("Description:", embed.description);
+    console.log("🎯 SLOTIERS REZULTAT DETECTED");
 
-      if (embed.fields?.length) {
-        embed.fields.forEach((field) => {
-          console.log(`${field.name}: ${field.value}`);
-        });
+    let player = null;
+    let ign = null;
+    let mode = null;
+    let tier = null;
+    let tester = null;
+    let notes = null;
+
+    for (const field of embed.fields ?? []) {
+      const name = field.name.replace(/:/g, "").trim();
+      const value = field.value.trim();
+
+      if (name.includes("Igralec")) {
+        const match = value.match(/<@!?(\d+)>/);
+        player = match ? match[1] : null;
+
+        const ignMatch = value.match(/\(`([^`]+)`\)/);
+        ign = ignMatch ? ignMatch[1] : null;
       }
+
+      if (name.includes("Način boja")) {
+        mode = value;
+      }
+
+      if (name.includes("Dosežen Tier")) {
+        tier = value.replace(/\*/g, "").trim();
+      }
+
+      if (name.includes("Tester")) {
+        const match = value.match(/<@!?(\d+)>/);
+        tester = match ? match[1] : null;
+      }
+
+      if (name.includes("Rezultat / Opombe")) {
+        notes = value;
+      }
+    }
+
+    console.log("📋 Parsed result:");
+    console.log({
+      player,
+      ign,
+      mode,
+      tier,
+      tester,
+      notes
     });
+
+    // Zaenkrat samo preverjamo parser.
+    // API povezavo dodava, ko potrdimo, da so podatki pravilni.
   }
 });
 
 client.on("error", (error) => {
-  console.error("❌ V2 ERROR:", error);
+  console.error("❌ DISCORD ERROR:", error);
 });
 
 process.on("unhandledRejection", (error) => {
-  console.error("❌ V2 UNHANDLED:", error);
+  console.error("❌ UNHANDLED ERROR:", error);
 });
 
 client.login(process.env.DISCORD_BOT_TOKEN);
