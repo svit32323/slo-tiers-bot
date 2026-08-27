@@ -11,43 +11,43 @@ const client = new Client({
   ]
 });
 
-console.log("🚀 Starting SloTiers Discord Bot V3...");
+console.log("Starting SloTiers Discord Bot");
 
-client.once("clientReady", () => {
-  console.log("=================================");
-  console.log("🔥 SLOTIERS BOT V3 ONLINE");
-  console.log(`🤖 Bot: ${client.user.tag}`);
-  console.log(`🏠 Servers: ${client.guilds.cache.size}`);
-  console.log("=================================");
+client.once("ready", function () {
+  console.log("SLOTIERS BOT ONLINE");
+  console.log("Bot: " + client.user.tag);
+  console.log("Servers: " + client.guilds.cache.size);
 });
 
-client.on("messageCreate", async (message) => {
+client.on("messageCreate", async function (message) {
   try {
-    console.log("📩 MESSAGE RECEIVED");
-    console.log(`Server: ${message.guild?.name ?? "DM"}`);
-    console.log(`Channel: ${message.channel?.name ?? "unknown"}`);
-    console.log(`Author: ${message.author?.tag ?? "unknown"}`);
-    console.log(`Content: ${message.content || "(empty)"}`);
-    console.log(`Embeds: ${message.embeds.length}`);
+    console.log("MESSAGE RECEIVED");
+    console.log("Server: " + (message.guild ? message.guild.name : "DM"));
+    console.log("Channel: " + (message.channel ? message.channel.name : "unknown"));
+    console.log("Author: " + message.author.tag);
+    console.log("Content: " + (message.content || "(empty)"));
+    console.log("Embeds: " + message.embeds.length);
 
-    if (!message.embeds.length) return;
+    if (!message.embeds.length) {
+      return;
+    }
 
     for (const embed of message.embeds) {
-      console.log("🎯 EMBED FOUND");
-      console.log(`Title: ${embed.title ?? "null"}`);
-      console.log(`Description: ${embed.description ?? "null"}`);
+      console.log("EMBED FOUND");
+      console.log("Title: " + (embed.title || "null"));
 
-      for (const field of embed.fields ?? []) {
-        console.log(`${field.name}: ${field.value}`);
+      for (const field of embed.fields || []) {
+        console.log(field.name + ": " + field.value);
       }
 
-      if (!embed.title?.includes("SloTiers Rezultat Testiranja")) {
+      if (
+        !embed.title ||
+        !embed.title.includes("SloTiers Rezultat Testiranja")
+      ) {
         continue;
       }
 
-      console.log("=================================");
-      console.log("🎯 SLOTIERS RESULT DETECTED");
-      console.log("=================================");
+      console.log("SLOTIERS RESULT DETECTED");
 
       let ign = "";
       let mode = "";
@@ -56,7 +56,7 @@ client.on("messageCreate", async (message) => {
       let testerId = "";
       let notes = "";
 
-      for (const field of embed.fields ?? []) {
+      for (const field of embed.fields || []) {
         const name = String(field.name || "").toLowerCase();
         const value = String(field.value || "").trim();
 
@@ -114,37 +114,25 @@ client.on("messageCreate", async (message) => {
         }
       }
 
-      console.log("📋 PARSED RESULT");
-      console.log("-------------------------");
-      console.log(`👤 Player ID: ${playerId}`);
-      console.log(`⛏️ IGN: ${ign}`);
-      console.log(`🎮 Mode: ${mode}`);
-      console.log(`🏆 Tier: ${tier}`);
-      console.log(`🛡️ Tester ID: ${testerId}`);
-      console.log(`📝 Notes: ${notes}`);
-      console.log("-------------------------");
+      console.log("PARSED RESULT");
+      console.log("Player ID: " + playerId);
+      console.log("IGN: " + ign);
+      console.log("Mode: " + mode);
+      console.log("Tier: " + tier);
+      console.log("Tester ID: " + testerId);
+      console.log("Notes: " + notes);
 
       if (!ign || !mode || !tier) {
-        console.log("⚠️ Result is missing required data.");
+        console.log("Result is missing required data");
         continue;
       }
 
       if (!process.env.DISCORD_INGEST_SECRET) {
-        console.error("❌ DISCORD_INGEST_SECRET is missing!");
-        return;
+        console.log("DISCORD_INGEST_SECRET is missing");
+        continue;
       }
 
-      const payload = {
-        embeds: [
-          {
-            title: embed.title,
-            description: embed.description,
-            fields: embed.fields
-          }
-        ]
-      };
-
-      console.log("📤 Sending result to SloTiers...");
+      console.log("Sending result to SloTiers");
 
       const response = await fetch(
         "https://slotiers.hatchable.site/api/discord/ranking",
@@ -154,49 +142,57 @@ client.on("messageCreate", async (message) => {
             "Content-Type": "application/json",
             "x-discord-ingest-secret": process.env.DISCORD_INGEST_SECRET
           },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({
+            embeds: [
+              {
+                title: embed.title,
+                description: embed.description,
+                fields: embed.fields
+              }
+            ]
+          })
         }
       );
 
-      const text = await response.text();
+      const result = await response.text();
 
-      console.log(`📡 SloTiers API status: ${response.status}`);
-      console.log(`📡 SloTiers API response: ${text}`);
+      console.log("SloTiers status: " + response.status);
+      console.log("SloTiers response: " + result);
 
       if (response.ok) {
-        console.log("✅ RESULT SUCCESSFULLY SENT TO SLOTIERS");
+        console.log("RESULT SENT SUCCESSFULLY");
       } else {
-        console.log("❌ SloTiers rejected the result.");
+        console.log("SloTiers rejected the result");
       }
     }
   } catch (error) {
-    console.error("❌ MESSAGE HANDLER ERROR:");
+    console.error("MESSAGE HANDLER ERROR");
     console.error(error);
   }
 });
 
-client.on("error", (error) => {
-  console.error("❌ DISCORD CLIENT ERROR:");
+client.on("error", function (error) {
+  console.error("DISCORD ERROR");
   console.error(error);
 });
 
-process.on("unhandledRejection", (error) => {
-  console.error("❌ UNHANDLED REJECTION:");
+process.on("unhandledRejection", function (error) {
+  console.error("UNHANDLED REJECTION");
   console.error(error);
 });
 
-process.on("uncaughtException", (error) => {
-  console.error("❌ UNCAUGHT EXCEPTION:");
+process.on("uncaughtException", function (error) {
+  console.error("UNCAUGHT EXCEPTION");
   console.error(error);
 });
 
 if (!process.env.DISCORD_BOT_TOKEN) {
-  console.error("❌ DISCORD_BOT_TOKEN is missing!");
+  console.error("DISCORD_BOT_TOKEN is missing");
   process.exit(1);
 }
 
 if (!process.env.DISCORD_INGEST_SECRET) {
-  console.error("❌ DISCORD_INGEST_SECRET is missing!");
+  console.error("DISCORD_INGEST_SECRET is missing");
   process.exit(1);
 }
 
