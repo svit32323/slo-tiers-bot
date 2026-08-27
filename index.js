@@ -86,7 +86,9 @@ function getCodeValue(value) {
     return "";
   }
 
-  return text.substring(first + 1, second).trim();
+  return text
+    .substring(first + 1, second)
+    .trim();
 }
 
 function normalizeTier(value) {
@@ -99,6 +101,53 @@ function normalizeTier(value) {
   }
 
   return "";
+}
+
+/* =========================================================
+   FETCH ALL MEMBERS SAFELY
+========================================================= */
+
+async function fetchAllMembersSafely(guild) {
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      console.log(
+        `Fetching all Discord members - attempt ${attempt}/5`
+      );
+
+      const members =
+        await guild.members.fetch();
+
+      console.log(
+        `Successfully fetched ${members.size} Discord members`
+      );
+
+      return [...members.values()];
+    } catch (error) {
+      console.error(
+        `Member fetch failed on attempt ${attempt}/5`
+      );
+
+      console.error(error);
+
+      if (attempt === 5) {
+        throw error;
+      }
+
+      const waitTime =
+        Math.min(
+          15000,
+          attempt * 3000
+        );
+
+      console.log(
+        `Waiting ${waitTime}ms before retry...`
+      );
+
+      await sleep(waitTime);
+    }
+  }
+
+  return [];
 }
 
 /* =========================================================
@@ -123,17 +172,6 @@ function parseRankRole(roleName) {
   }
 
   const tier = tierMatch[1];
-
-  /*
-   * Remove tier from role.
-   *
-   * Supports:
-   * SWORD HT1
-   * HT1 SWORD
-   * SWORD • HT1
-   * ⚔️ HT1
-   * HT1 | SWORD
-   */
 
   let mode = name
     .replace(
@@ -189,7 +227,7 @@ function parseRankRole(roleName) {
 }
 
 /* =========================================================
-   MINECRAFT NAME
+   GET MINECRAFT USERNAME
 ========================================================= */
 
 function getMinecraftUsername(member) {
@@ -217,7 +255,7 @@ function getMinecraftUsername(member) {
 }
 
 /* =========================================================
-   EMBED PARSER
+   PARSE SLOTIERS RESULT EMBED
 ========================================================= */
 
 function parseEmbed(embed) {
@@ -225,7 +263,9 @@ function parseEmbed(embed) {
     return null;
   }
 
-  const title = String(embed.title || "");
+  const title = String(
+    embed.title || ""
+  );
 
   if (
     !title.includes(
@@ -242,22 +282,27 @@ function parseEmbed(embed) {
   let tester = "";
   let notes = "";
 
-  for (const field of embed.fields || []) {
-    const name = String(
-      field.name || ""
-    ).toLowerCase();
+  const fields =
+    embed.fields || [];
 
-    const value = String(
-      field.value || ""
-    ).trim();
+  for (const field of fields) {
+    const name =
+      String(field.name || "")
+        .toLowerCase();
+
+    const value =
+      String(field.value || "")
+        .trim();
 
     if (
       name.includes("igralec") ||
       name.includes("player")
     ) {
-      player = getMentionId(value);
+      player =
+        getMentionId(value);
 
-      const code = getCodeValue(value);
+      const code =
+        getCodeValue(value);
 
       if (code) {
         ign = code;
@@ -281,14 +326,16 @@ function parseEmbed(embed) {
       name === "tier" ||
       name.includes("achieved tier")
     ) {
-      tier = normalizeTier(value);
+      tier =
+        normalizeTier(value);
     }
 
     if (
       name.includes("tester") ||
       name.includes("tested by")
     ) {
-      tester = getMentionId(value);
+      tester =
+        getMentionId(value);
     }
 
     if (
@@ -316,29 +363,37 @@ function parseEmbed(embed) {
 }
 
 /* =========================================================
-   SEND RESULT
+   SEND RESULT TO SLOTIERS
 ========================================================= */
 
 async function sendToSloTiers(data) {
-  const response = await fetch(
-    RANKING_URL,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-discord-ingest-secret":
-          INGEST_SECRET
-      },
-      body: JSON.stringify(data)
-    }
-  );
+  const response =
+    await fetch(
+      RANKING_URL,
+      {
+        method: "POST",
 
-  const text = await response.text();
+        headers: {
+          "Content-Type":
+            "application/json",
+
+          "x-discord-ingest-secret":
+            INGEST_SECRET
+        },
+
+        body:
+          JSON.stringify(data)
+      }
+    );
+
+  const text =
+    await response.text();
 
   let body;
 
   try {
-    body = JSON.parse(text);
+    body =
+      JSON.parse(text);
   } catch {
     body = text;
   }
@@ -351,7 +406,7 @@ async function sendToSloTiers(data) {
 }
 
 /* =========================================================
-   PROCESS RESULT
+   PROCESS RESULT MESSAGE
 ========================================================= */
 
 async function processMessage(
@@ -365,8 +420,12 @@ async function processMessage(
     return false;
   }
 
-  for (const embed of message.embeds) {
-    const data = parseEmbed(embed);
+  for (
+    const embed of
+    message.embeds
+  ) {
+    const data =
+      parseEmbed(embed);
 
     if (!data) {
       continue;
@@ -385,31 +444,38 @@ async function processMessage(
     );
 
     console.log(
-      "Message ID: " + message.id
+      "Message ID: " +
+      message.id
     );
 
     console.log(
-      "Player: " + data.player
+      "Player: " +
+      data.player
     );
 
     console.log(
-      "IGN: " + data.ign
+      "IGN: " +
+      data.ign
     );
 
     console.log(
-      "Mode: " + data.mode
+      "Mode: " +
+      data.mode
     );
 
     console.log(
-      "Tier: " + data.tier
+      "Tier: " +
+      data.tier
     );
 
     console.log(
-      "Tester: " + data.tester
+      "Tester: " +
+      data.tester
     );
 
     console.log(
-      "Notes: " + data.notes
+      "Notes: " +
+      data.notes
     );
 
     console.log(
@@ -417,7 +483,9 @@ async function processMessage(
     );
 
     const result =
-      await sendToSloTiers(data);
+      await sendToSloTiers(
+        data
+      );
 
     console.log(
       "SloTiers status: " +
@@ -426,7 +494,9 @@ async function processMessage(
 
     console.log(
       "SloTiers response: " +
-      JSON.stringify(result.body)
+      JSON.stringify(
+        result.body
+      )
     );
 
     if (result.ok) {
@@ -463,7 +533,9 @@ function getMemberRanks(member) {
     }
 
     const parsed =
-      parseRankRole(role.name);
+      parseRankRole(
+        role.name
+      );
 
     if (!parsed) {
       continue;
@@ -481,7 +553,7 @@ function getMemberRanks(member) {
 }
 
 /* =========================================================
-   SYNC RANKS
+   SYNC ALL DISCORD MEMBERS
 ========================================================= */
 
 async function syncRanks(guild) {
@@ -503,11 +575,13 @@ async function syncRanks(guild) {
     );
 
     console.log(
-      "Guild: " + guild.name
+      "Guild: " +
+      guild.name
     );
 
     console.log(
-      "Guild ID: " + guild.id
+      "Guild ID: " +
+      guild.id
     );
 
     console.log(
@@ -515,29 +589,27 @@ async function syncRanks(guild) {
     );
 
     /*
-     * IMPORTANT:
+     * Fetch ALL members.
      *
-     * DO NOT call guild.members.fetch()
-     * here.
-     *
-     * That sends Gateway opcode 8 and was
-     * causing your rate-limit problem.
-     *
-     * GuildMembers intent keeps members in cache.
+     * If Discord rate-limits opcode 8,
+     * fetchAllMembersSafely() waits and retries.
      */
 
-    const members = [
-      ...guild.members.cache.values()
-    ];
+    const members =
+      await fetchAllMembersSafely(
+        guild
+      );
 
     console.log(
-      "Cached Discord members: " +
+      "Discord members fetched: " +
       members.length
     );
 
-    if (members.length === 0) {
+    if (
+      members.length === 0
+    ) {
       throw new Error(
-        "Discord member cache je prazen. Preveri GuildMembers intent."
+        "Discord ni vrnil nobenega člana."
       );
     }
 
@@ -549,27 +621,39 @@ async function syncRanks(guild) {
     let botsSkipped = 0;
     let noRankSkipped = 0;
 
-    for (const member of members) {
+    for (
+      const member of members
+    ) {
       membersChecked++;
 
-      if (member.user.bot) {
+      if (
+        member.user.bot
+      ) {
         botsSkipped++;
         continue;
       }
 
       const ranks =
-        getMemberRanks(member);
+        getMemberRanks(
+          member
+        );
 
-      if (ranks.length === 0) {
+      if (
+        ranks.length === 0
+      ) {
         noRankSkipped++;
         continue;
       }
 
       membersWithRanks++;
-      ranksFound += ranks.length;
+
+      ranksFound +=
+        ranks.length;
 
       const ign =
-        getMinecraftUsername(member);
+        getMinecraftUsername(
+          member
+        );
 
       if (!ign) {
         noRankSkipped++;
@@ -591,16 +675,20 @@ async function syncRanks(guild) {
       );
 
       console.log(
-        "IGN: " + ign
+        "IGN: " +
+        ign
       );
 
       console.log(
         "Ranks: " +
-        JSON.stringify(ranks)
+        JSON.stringify(
+          ranks
+        )
       );
 
       players.push({
-        discord_id: member.id,
+        discord_id:
+          member.id,
 
         discord_username:
           member.user.username,
@@ -657,7 +745,9 @@ async function syncRanks(guild) {
       "=============================="
     );
 
-    if (players.length === 0) {
+    if (
+      players.length === 0
+    ) {
       return {
         membersChecked,
         membersWithRanks,
@@ -673,9 +763,7 @@ async function syncRanks(guild) {
     }
 
     /*
-     * ONE request to Hatchable.
-     *
-     * No per-player DB calls from Discord bot.
+     * ONE batch request to SloTiers.
      */
 
     const response =
@@ -692,11 +780,16 @@ async function syncRanks(guild) {
               INGEST_SECRET
           },
 
-          body: JSON.stringify({
-            guild_id: guild.id,
-            guild_name: guild.name,
-            players
-          })
+          body:
+            JSON.stringify({
+              guild_id:
+                guild.id,
+
+              guild_name:
+                guild.name,
+
+              players
+            })
         }
       );
 
@@ -706,7 +799,8 @@ async function syncRanks(guild) {
     let body;
 
     try {
-      body = JSON.parse(text);
+      body =
+        JSON.parse(text);
     } catch {
       body = text;
     }
@@ -758,36 +852,42 @@ async function syncRanks(guild) {
 
       playersCreated:
         Number(
-          body.players_added || 0
+          body.players_added ||
+          0
         ),
 
       playersUpdated:
         Number(
-          body.players_updated || 0
+          body.players_updated ||
+          0
         ),
 
       ranksAdded:
         Number(
-          body.ranks_added || 0
+          body.ranks_added ||
+          0
         ),
 
       ranksUpdated:
         Number(
-          body.ranks_updated || 0
+          body.ranks_updated ||
+          0
         ),
 
       failed:
         Number(
-          body.failed || 0
+          body.failed ||
+          0
         )
     };
   } finally {
-    syncInProgress = false;
+    syncInProgress =
+      false;
   }
 }
 
 /* =========================================================
-   REGISTER COMMANDS
+   BOT READY
 ========================================================= */
 
 client.once(
@@ -834,7 +934,7 @@ client.once(
             "sync-ranks"
           )
           .setDescription(
-            "Sync Discord SloTiers ranks into the SloTiers tierlist"
+            "Sync all Discord SloTiers roles into the SloTiers tierlist"
           )
           .setDefaultMemberPermissions(
             PermissionFlagsBits.Administrator
@@ -880,12 +980,14 @@ client.once(
 );
 
 /* =========================================================
-   AUTOMATIC RESULTS
+   AUTOMATIC RESULT LISTENER
 ========================================================= */
 
 client.on(
   "messageCreate",
-  async function (message) {
+  async function (
+    message
+  ) {
     try {
       console.log(
         "MESSAGE RECEIVED"
@@ -934,12 +1036,14 @@ client.on(
 );
 
 /* =========================================================
-   SLASH COMMANDS
+   SLASH COMMAND HANDLER
 ========================================================= */
 
 client.on(
   "interactionCreate",
-  async function (interaction) {
+  async function (
+    interaction
+  ) {
     if (
       !interaction.isChatInputCommand()
     ) {
@@ -969,7 +1073,9 @@ client.on(
         return;
       }
 
-      if (syncInProgress) {
+      if (
+        syncInProgress
+      ) {
         await interaction.reply({
           content:
             "⏳ Sync je že v teku. Počakaj, da se konča.",
@@ -985,7 +1091,7 @@ client.on(
 
       try {
         await interaction.editReply(
-          "⏳ **Skeniram Discord ranke...**"
+          "⏳ **Pridobivam vse Discord člane...**"
         );
 
         const result =
@@ -1101,7 +1207,9 @@ client.on(
 
     const channel =
       interaction.guild.channels.cache.find(
-        function (item) {
+        function (
+          item
+        ) {
           return (
             item.name ===
             RESULTS_CHANNEL
@@ -1172,7 +1280,9 @@ client.on(
           const isResult =
             message.embeds &&
             message.embeds.some(
-              function (embed) {
+              function (
+                embed
+              ) {
                 return (
                   embed.title &&
                   embed.title.includes(
@@ -1286,7 +1396,9 @@ client.on(
 
 client.on(
   "error",
-  function (error) {
+  function (
+    error
+  ) {
     console.error(
       "DISCORD CLIENT ERROR"
     );
@@ -1297,7 +1409,9 @@ client.on(
 
 process.on(
   "unhandledRejection",
-  function (error) {
+  function (
+    error
+  ) {
     console.error(
       "UNHANDLED REJECTION"
     );
@@ -1310,7 +1424,9 @@ process.on(
 
 process.on(
   "uncaughtException",
-  function (error) {
+  function (
+    error
+  ) {
     console.error(
       "UNCAUGHT EXCEPTION"
     );
