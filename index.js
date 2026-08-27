@@ -13,7 +13,7 @@ const client = new Client({
   ]
 });
 
-client.once("ready", () => {
+client.once("clientReady", () => {
   console.log("=================================");
   console.log("🔥 SLOTIERS BOT V2 ONLINE");
   console.log(`🤖 Bot: ${client.user.tag}`);
