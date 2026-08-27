@@ -11,10 +11,12 @@ const BOT_TOKEN = process.env.DISCORD_BOT_TOKEN;
 const INGEST_SECRET = process.env.DISCORD_INGEST_SECRET;
 
 const RESULTS_CHANNEL = "⭐┃rezultati";
-const SLOTIERS_API =
-  "https://slotiers.hatchable.site/api/discord/ranking";
-const SYNC_API =
+
+const RANK_SYNC_URL =
   "https://slotiers.hatchable.site/api/discord/sync-ranks";
+
+const RANKING_URL =
+  "https://slotiers.hatchable.site/api/discord/ranking";
 
 const TIERS = [
   "HT1",
@@ -65,6 +67,7 @@ function getMentionId(value) {
 
 function getCodeValue(value) {
   const text = clean(value);
+
   const first = text.indexOf("`");
 
   if (first === -1) {
@@ -77,7 +80,9 @@ function getCodeValue(value) {
     return "";
   }
 
-  return text.substring(first + 1, second).trim();
+  return text
+    .substring(first + 1, second)
+    .trim();
 }
 
 function normalizeTier(value) {
@@ -93,18 +98,20 @@ function normalizeTier(value) {
 }
 
 /*
- * Converts Discord role names into:
+ * Discord role examples:
  *
  * SWORD HT1
- *   -> mode: SWORD
- *   -> tier: HT1
+ * SWORD LT2
+ * MACE HT3
+ * UHC LT4
  *
- * Also accepts:
+ * Also supports:
  *
  * SWORD | HT1
- * SWORD - HT1
  * SWORD: HT1
+ * SWORD - HT1
  */
+
 function parseRankRole(roleName) {
   const name = clean(roleName).toUpperCase();
 
@@ -119,10 +126,10 @@ function parseRankRole(roleName) {
   const tier = tierMatch[1];
 
   let mode = name
-    .replace(tierMatch[0], "")
-    .replace(/[|:()[\]{}]/g, " ")
-    .replace(/\s+/g, " ")
+    .substring(0, tierMatch.index)
+    .replace(/[|:_()[\]{}]/g, " ")
     .replace(/[-–—]+/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 
   if (!mode) {
@@ -136,34 +143,40 @@ function parseRankRole(roleName) {
 }
 
 /*
- * Minecraft IGN:
+ * Gets Minecraft username from Discord.
  *
  * Priority:
  * 1. nickname
- * 2. globalName
- * 3. username
- *
- * If your server uses a different naming system,
- * change this function.
+ * 2. global name
+ * 3. Discord username
  */
+
 function getMinecraftUsername(member) {
   const nickname = clean(member.nickname);
 
   if (nickname) {
-    return nickname.replace(/^@/, "").trim();
+    return nickname
+      .replace(/^@/, "")
+      .trim();
   }
 
-  const globalName = clean(member.user.globalName);
+  const globalName = clean(
+    member.user.globalName
+  );
 
   if (globalName) {
-    return globalName.replace(/^@/, "").trim();
+    return globalName
+      .replace(/^@/, "")
+      .trim();
   }
 
-  return clean(member.user.username).replace(/^@/, "").trim();
+  return clean(
+    member.user.username
+  ).replace(/^@/, "");
 }
 
 /* =========================================================
-   EXISTING RESULT EMBED IMPORT
+   PARSE SLOTIERS RESULT EMBED
 ========================================================= */
 
 function parseEmbed(embed) {
@@ -173,7 +186,11 @@ function parseEmbed(embed) {
 
   const title = String(embed.title || "");
 
-  if (!title.includes("SloTiers Rezultat Testiranja")) {
+  if (
+    !title.includes(
+      "SloTiers Rezultat Testiranja"
+    )
+  ) {
     return null;
   }
 
@@ -187,8 +204,12 @@ function parseEmbed(embed) {
   const fields = embed.fields || [];
 
   for (const field of fields) {
-    const name = String(field.name || "").toLowerCase();
-    const value = String(field.value || "").trim();
+    const name =
+      String(field.name || "")
+        .toLowerCase();
+
+    const value =
+      String(field.value || "").trim();
 
     if (
       name.includes("igralec") ||
@@ -255,20 +276,27 @@ function parseEmbed(embed) {
 }
 
 /* =========================================================
-   SEND NORMAL RESULT
+   SEND NORMAL RESULT TO SLOTIERS
 ========================================================= */
 
 async function sendToSloTiers(data) {
-  const response = await fetch(SLOTIERS_API, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-discord-ingest-secret": INGEST_SECRET
-    },
-    body: JSON.stringify(data)
-  });
+  const response = await fetch(
+    RANKING_URL,
+    {
+      method: "POST",
 
-  const text = await response.text();
+      headers: {
+        "Content-Type": "application/json",
+        "x-discord-ingest-secret":
+          INGEST_SECRET
+      },
+
+      body: JSON.stringify(data)
+    }
+  );
+
+  const text =
+    await response.text();
 
   let body;
 
@@ -289,46 +317,107 @@ async function sendToSloTiers(data) {
    PROCESS RESULT MESSAGE
 ========================================================= */
 
-async function processMessage(message, source) {
-  if (!message.embeds || message.embeds.length === 0) {
+async function processMessage(
+  message,
+  source
+) {
+  if (
+    !message.embeds ||
+    message.embeds.length === 0
+  ) {
     return false;
   }
 
-  for (const embed of message.embeds) {
-    const data = parseEmbed(embed);
+  for (
+    const embed of message.embeds
+  ) {
+    const data =
+      parseEmbed(embed);
 
     if (!data) {
       continue;
     }
 
-    console.log("==============================");
-    console.log("SLOTIERS RESULT DETECTED");
-    console.log("Source: " + source);
-    console.log("Message ID: " + message.id);
-    console.log("Player: " + data.player);
-    console.log("IGN: " + data.ign);
-    console.log("Mode: " + data.mode);
-    console.log("Tier: " + data.tier);
-    console.log("Tester: " + data.tester);
-    console.log("==============================");
-
-    const result = await sendToSloTiers(data);
+    console.log(
+      "=============================="
+    );
 
     console.log(
-      "SloTiers status: " + result.status
+      "SLOTIERS RESULT DETECTED"
+    );
+
+    console.log(
+      "Source: " + source
+    );
+
+    console.log(
+      "Message ID: " +
+      message.id
+    );
+
+    console.log(
+      "Player: " +
+      data.player
+    );
+
+    console.log(
+      "IGN: " +
+      data.ign
+    );
+
+    console.log(
+      "Mode: " +
+      data.mode
+    );
+
+    console.log(
+      "Tier: " +
+      data.tier
+    );
+
+    console.log(
+      "Tester: " +
+      data.tester
+    );
+
+    console.log(
+      "Notes: " +
+      data.notes
+    );
+
+    console.log(
+      "=============================="
+    );
+
+    const result =
+      await sendToSloTiers(
+        data
+      );
+
+    console.log(
+      "SloTiers status: " +
+      result.status
     );
 
     console.log(
       "SloTiers response: " +
-      JSON.stringify(result.body)
+      JSON.stringify(
+        result.body
+      )
     );
 
     if (result.ok) {
-      console.log("RESULT SENT SUCCESSFULLY");
+      console.log(
+        "RESULT SENT SUCCESSFULLY"
+      );
+
       return true;
     }
 
-    console.log("SloTiers rejected the result");
+    console.log(
+      "SloTiers rejected the result"
+    );
+
     return false;
   }
 
@@ -336,18 +425,24 @@ async function processMessage(message, source) {
 }
 
 /* =========================================================
-   SYNC ONE MEMBER
+   GET MEMBER RANKS
 ========================================================= */
 
 function getMemberRanks(member) {
   const ranks = [];
 
-  for (const role of member.roles.cache.values()) {
+  for (
+    const role of
+    member.roles.cache.values()
+  ) {
     if (role.managed) {
       continue;
     }
 
-    const parsed = parseRankRole(role.name);
+    const parsed =
+      parseRankRole(
+        role.name
+      );
 
     if (!parsed) {
       continue;
@@ -365,113 +460,219 @@ function getMemberRanks(member) {
 }
 
 /* =========================================================
-   SYNC ALL MEMBERS TO SLOTIERS
+   SYNC ALL DISCORD MEMBERS
 ========================================================= */
 
 async function syncRanks(guild) {
-  console.log("==============================");
-  console.log("STARTING DISCORD RANK SYNC");
-  console.log("Guild: " + guild.name);
-  console.log("==============================");
+  console.log(
+    "=============================="
+  );
+
+  console.log(
+    "STARTING FULL RANK SYNC"
+  );
+
+  console.log(
+    "Guild: " +
+    guild.name
+  );
+
+  console.log(
+    "Guild ID: " +
+    guild.id
+  );
+
+  console.log(
+    "=============================="
+  );
+
+  /*
+   * Fetch ALL guild members.
+   */
 
   await guild.members.fetch();
 
-  const members = [...guild.members.cache.values()];
+  const members =
+    [...guild.members.cache.values()];
+
+  console.log(
+    "Discord members fetched: " +
+    members.length
+  );
 
   const players = [];
 
   let membersChecked = 0;
   let membersWithRanks = 0;
   let ranksFound = 0;
+  let botsSkipped = 0;
+  let noRankSkipped = 0;
 
-  for (const member of members) {
+  for (
+    const member of members
+  ) {
     membersChecked++;
 
     if (member.user.bot) {
+      botsSkipped++;
       continue;
     }
 
-    const ranks = getMemberRanks(member);
+    const ranks =
+      getMemberRanks(
+        member
+      );
 
-    if (ranks.length === 0) {
+    if (
+      ranks.length === 0
+    ) {
+      noRankSkipped++;
       continue;
     }
 
     membersWithRanks++;
     ranksFound += ranks.length;
 
-    const ign = getMinecraftUsername(member);
+    const ign =
+      getMinecraftUsername(
+        member
+      );
 
     if (!ign) {
+      noRankSkipped++;
       continue;
     }
 
-    console.log("------------------------------");
-    console.log("Member: " + member.user.tag);
-    console.log("Discord ID: " + member.id);
-    console.log("IGN: " + ign);
+    console.log(
+      "------------------------------"
+    );
 
-    for (const rank of ranks) {
-      console.log(
-        rank.mode +
-        " -> " +
-        rank.tier +
-        " (" +
-        rank.role_name +
-        ")"
-      );
-    }
+    console.log(
+      "Member: " +
+      member.user.tag
+    );
+
+    console.log(
+      "Discord ID: " +
+      member.id
+    );
+
+    console.log(
+      "IGN: " +
+      ign
+    );
+
+    console.log(
+      "Ranks: " +
+      JSON.stringify(ranks)
+    );
 
     players.push({
       discord_id: member.id,
-      discord_username: member.user.username,
+
+      discord_username:
+        member.user.username,
+
       discord_display_name:
         member.user.globalName ||
         member.user.username,
+
       ign,
+
       ranks
     });
   }
 
-  console.log("------------------------------");
+  console.log(
+    "=============================="
+  );
+
+  console.log(
+    "MEMBER SCAN FINISHED"
+  );
+
   console.log(
     "Members checked: " +
     membersChecked
   );
+
   console.log(
-    "Members with SloTiers roles: " +
+    "Members with ranks: " +
     membersWithRanks
   );
+
   console.log(
     "Ranks found: " +
     ranksFound
   );
 
-  if (players.length === 0) {
+  console.log(
+    "Bots skipped: " +
+    botsSkipped
+  );
+
+  console.log(
+    "No rank skipped: " +
+    noRankSkipped
+  );
+
+  console.log(
+    "Players to sync: " +
+    players.length
+  );
+
+  console.log(
+    "=============================="
+  );
+
+  if (
+    players.length === 0
+  ) {
     return {
-      ok: true,
       membersChecked,
       membersWithRanks,
       ranksFound,
+      botsSkipped,
+      noRankSkipped,
       playersCreated: 0,
-      ranksUpdated: 0
+      playersUpdated: 0,
+      ranksAdded: 0,
+      ranksUpdated: 0,
+      failed: 0
     };
   }
 
-  const response = await fetch(SYNC_API, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-discord-ingest-secret": INGEST_SECRET
-    },
-    body: JSON.stringify({
-      guild_id: guild.id,
-      guild_name: guild.name,
-      players
-    })
-  });
+  /*
+   * Send ALL players in one request.
+   *
+   * This is important because the SloTiers
+   * endpoint is optimized for batch sync.
+   */
 
-  const text = await response.text();
+  const response =
+    await fetch(
+      RANK_SYNC_URL,
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+
+          "x-discord-ingest-secret":
+            INGEST_SECRET
+        },
+
+        body: JSON.stringify({
+          guild_id: guild.id,
+          guild_name: guild.name,
+          players
+        })
+      }
+    );
+
+  const text =
+    await response.text();
 
   let body;
 
@@ -481,13 +682,30 @@ async function syncRanks(guild) {
     body = text;
   }
 
-  console.log("==============================");
-  console.log("SYNC API STATUS: " + response.status);
   console.log(
-    "SYNC API RESPONSE: " +
-    JSON.stringify(body)
+    "=============================="
   );
-  console.log("==============================");
+
+  console.log(
+    "SLOTIERS SYNC STATUS: " +
+    response.status
+  );
+
+  console.log(
+    "SLOTIERS SYNC RESPONSE:"
+  );
+
+  console.log(
+    JSON.stringify(
+      body,
+      null,
+      2
+    )
+  );
+
+  console.log(
+    "=============================="
+  );
 
   if (!response.ok) {
     throw new Error(
@@ -499,138 +717,214 @@ async function syncRanks(guild) {
   }
 
   return {
-    ok: true,
     membersChecked,
+
     membersWithRanks,
+
     ranksFound,
-    ...body
+
+    botsSkipped,
+
+    noRankSkipped,
+
+    playersCreated:
+      Number(
+        body.players_added || 0
+      ),
+
+    playersUpdated:
+      Number(
+        body.players_updated || 0
+      ),
+
+    ranksAdded:
+      Number(
+        body.ranks_added || 0
+      ),
+
+    ranksUpdated:
+      Number(
+        body.ranks_updated || 0
+      ),
+
+    failed:
+      Number(
+        body.failed || 0
+      )
   };
 }
 
 /* =========================================================
-   READY
+   BOT READY
 ========================================================= */
 
-client.once("clientReady", async function () {
-  console.log("=================================");
-  console.log("SLOTIERS BOT ONLINE");
-  console.log("Bot: " + client.user.tag);
-  console.log("Servers: " + client.guilds.cache.size);
-  console.log("=================================");
+client.once(
+  "clientReady",
+  async function () {
+    console.log(
+      "================================="
+    );
 
-  try {
-    const importHistoryCommand =
-      new SlashCommandBuilder()
-        .setName("import-history")
-        .setDescription(
-          "Import old SloTiers results from the results channel"
-        )
-        .setDefaultMemberPermissions(
-          PermissionFlagsBits.Administrator
+    console.log(
+      "SLOTIERS BOT ONLINE"
+    );
+
+    console.log(
+      "Bot: " +
+      client.user.tag
+    );
+
+    console.log(
+      "Servers: " +
+      client.guilds.cache.size
+    );
+
+    console.log(
+      "================================="
+    );
+
+    try {
+      const importHistory =
+        new SlashCommandBuilder()
+          .setName(
+            "import-history"
+          )
+          .setDescription(
+            "Import old SloTiers results from the results channel"
+          )
+          .setDefaultMemberPermissions(
+            PermissionFlagsBits.Administrator
+          );
+
+      const syncRanks =
+        new SlashCommandBuilder()
+          .setName(
+            "sync-ranks"
+          )
+          .setDescription(
+            "Sync all Discord SloTiers roles into the SloTiers tierlist"
+          )
+          .setDefaultMemberPermissions(
+            PermissionFlagsBits.Administrator
+          );
+
+      const rest =
+        new REST({
+          version: "10"
+        }).setToken(
+          BOT_TOKEN
         );
 
-    const syncRanksCommand =
-      new SlashCommandBuilder()
-        .setName("sync-ranks")
-        .setDescription(
-          "Sync Discord SloTiers roles into the SloTiers tierlist"
-        )
-        .setDefaultMemberPermissions(
-          PermissionFlagsBits.Administrator
+      for (
+        const guild of
+        client.guilds.cache.values()
+      ) {
+        await rest.put(
+          Routes.applicationGuildCommands(
+            client.user.id,
+            guild.id
+          ),
+          {
+            body: [
+              importHistory.toJSON(),
+              syncRanks.toJSON()
+            ]
+          }
         );
 
-    const rest = new REST({
-      version: "10"
-    }).setToken(BOT_TOKEN);
+        console.log(
+          "Commands registered in " +
+          guild.name
+        );
+      }
+    } catch (error) {
+      console.error(
+        "COMMAND REGISTRATION ERROR"
+      );
 
-    for (const guild of client.guilds.cache.values()) {
-      await rest.put(
-        Routes.applicationGuildCommands(
-          client.user.id,
-          guild.id
-        ),
-        {
-          body: [
-            importHistoryCommand.toJSON(),
-            syncRanksCommand.toJSON()
-          ]
-        }
+      console.error(error);
+    }
+  }
+);
+
+/* =========================================================
+   AUTOMATIC RESULT LISTENER
+========================================================= */
+
+client.on(
+  "messageCreate",
+  async function (
+    message
+  ) {
+    try {
+      console.log(
+        "MESSAGE RECEIVED"
       );
 
       console.log(
-        "Registered commands in " +
-        guild.name
+        "Server: " +
+        (
+          message.guild
+            ? message.guild.name
+            : "DM"
+        )
       );
+
+      console.log(
+        "Channel: " +
+        (
+          message.channel
+            ? message.channel.name
+            : "unknown"
+        )
+      );
+
+      console.log(
+        "Author: " +
+        message.author.tag
+      );
+
+      console.log(
+        "Embeds: " +
+        message.embeds.length
+      );
+
+      await processMessage(
+        message,
+        "automatic"
+      );
+    } catch (error) {
+      console.error(
+        "MESSAGE HANDLER ERROR"
+      );
+
+      console.error(error);
     }
-  } catch (error) {
-    console.error(
-      "COMMAND REGISTRATION ERROR"
-    );
-    console.error(error);
   }
-});
+);
 
 /* =========================================================
-   MESSAGE LISTENER
-========================================================= */
-
-client.on("messageCreate", async function (message) {
-  try {
-    console.log("MESSAGE RECEIVED");
-
-    console.log(
-      "Server: " +
-      (message.guild
-        ? message.guild.name
-        : "DM")
-    );
-
-    console.log(
-      "Channel: " +
-      (message.channel
-        ? message.channel.name
-        : "unknown")
-    );
-
-    console.log(
-      "Author: " +
-      message.author.tag
-    );
-
-    console.log(
-      "Embeds: " +
-      message.embeds.length
-    );
-
-    await processMessage(
-      message,
-      "automatic"
-    );
-  } catch (error) {
-    console.error(
-      "MESSAGE HANDLER ERROR"
-    );
-    console.error(error);
-  }
-});
-
-/* =========================================================
-   SLASH COMMANDS
+   SLASH COMMAND HANDLER
 ========================================================= */
 
 client.on(
   "interactionCreate",
-  async function (interaction) {
-    if (!interaction.isChatInputCommand()) {
+  async function (
+    interaction
+  ) {
+    if (
+      !interaction.isChatInputCommand()
+    ) {
       return;
     }
 
-    /* -----------------------------------------------
+    /* =========================================
        /sync-ranks
-    ------------------------------------------------ */
+    ========================================= */
 
     if (
-      interaction.commandName === "sync-ranks"
+      interaction.commandName ===
+      "sync-ranks"
     ) {
       if (
         !interaction.memberPermissions ||
@@ -652,26 +946,53 @@ client.on(
       });
 
       try {
-        const result = await syncRanks(
-          interaction.guild
-        );
+        const result =
+          await syncRanks(
+            interaction.guild
+          );
 
         await interaction.editReply(
           "✅ **SloTiers rank sync končan!**\n\n" +
-          "👥 Pregledanih članov: " +
+
+          "👥 Pregledanih članov: **" +
           result.membersChecked +
-          "\n" +
-          "🏆 Članov z ranki: " +
+          "**\n" +
+
+          "🏆 Članov z ranki: **" +
           result.membersWithRanks +
-          "\n" +
-          "🎯 Najdenih rankov: " +
+          "**\n" +
+
+          "🎯 Najdenih rankov: **" +
           result.ranksFound +
-          "\n" +
-          "➕ Novih igralcev: " +
-          (result.playersCreated || 0) +
-          "\n" +
-          "🔄 Posodobljenih rankov: " +
-          (result.ranksUpdated || 0)
+          "**\n" +
+
+          "➕ Novih igralcev: **" +
+          result.playersCreated +
+          "**\n" +
+
+          "🔄 Posodobljenih igralcev: **" +
+          result.playersUpdated +
+          "**\n" +
+
+          "🆕 Dodanih rankov: **" +
+          result.ranksAdded +
+          "**\n" +
+
+          "♻️ Posodobljenih rankov: **" +
+          result.ranksUpdated +
+          "**\n" +
+
+          "🤖 Botov preskočenih: **" +
+          result.botsSkipped +
+          "**\n" +
+
+          "⏭️ Brez ranka: **" +
+          result.noRankSkipped +
+          "**\n" +
+
+          "❌ Failed: **" +
+          result.failed +
+          "**"
         );
       } catch (error) {
         console.error(
@@ -681,9 +1002,12 @@ client.on(
         console.error(error);
 
         await interaction.editReply(
-          "❌ Sync je padel.\n\n" +
+          "❌ **Sync je padel.**\n\n" +
           "Napaka: `" +
-          String(error.message || error) +
+          String(
+            error.message ||
+            error
+          ) +
           "`"
         );
       }
@@ -691,9 +1015,9 @@ client.on(
       return;
     }
 
-    /* -----------------------------------------------
+    /* =========================================
        /import-history
-    ------------------------------------------------ */
+    ========================================= */
 
     if (
       interaction.commandName !==
@@ -721,15 +1045,26 @@ client.on(
       ephemeral: true
     });
 
-    console.log("==============================");
-    console.log("STARTING HISTORY IMPORT");
-    console.log("==============================");
+    console.log(
+      "=============================="
+    );
+
+    console.log(
+      "STARTING HISTORY IMPORT"
+    );
+
+    console.log(
+      "=============================="
+    );
 
     const channel =
       interaction.guild.channels.cache.find(
-        function (item) {
+        function (
+          item
+        ) {
           return (
-            item.name === RESULTS_CHANNEL
+            item.name ===
+            RESULTS_CHANNEL
           );
         }
       );
@@ -743,7 +1078,9 @@ client.on(
       return;
     }
 
-    if (!channel.isTextBased()) {
+    if (
+      !channel.isTextBased()
+    ) {
       await interaction.editReply(
         "❌ Ta channel ni text channel."
       );
@@ -751,7 +1088,9 @@ client.on(
       return;
     }
 
-    let before = undefined;
+    let before =
+      undefined;
+
     let checked = 0;
     let found = 0;
     let successful = 0;
@@ -764,7 +1103,8 @@ client.on(
         };
 
         if (before) {
-          options.before = before;
+          options.before =
+            before;
         }
 
         const messages =
@@ -772,7 +1112,9 @@ client.on(
             options
           );
 
-        if (messages.size === 0) {
+        if (
+          messages.size === 0
+        ) {
           break;
         }
 
@@ -782,13 +1124,18 @@ client.on(
           " messages"
         );
 
-        for (const message of messages.values()) {
+        for (
+          const message of
+          messages.values()
+        ) {
           checked++;
 
           const isResult =
             message.embeds &&
             message.embeds.some(
-              function (embed) {
+              function (
+                embed
+              ) {
                 return (
                   embed.title &&
                   embed.title.includes(
@@ -817,50 +1164,88 @@ client.on(
           }
 
           await new Promise(
-            function (resolve) {
-              setTimeout(resolve, 300);
+            function (
+              resolve
+            ) {
+              setTimeout(
+                resolve,
+                300
+              );
             }
           );
         }
 
-        before = messages.last().id;
+        before =
+          messages.last().id;
 
-        if (messages.size < 100) {
+        if (
+          messages.size < 100
+        ) {
           break;
         }
 
         await new Promise(
-          function (resolve) {
-            setTimeout(resolve, 500);
+          function (
+            resolve
+          ) {
+            setTimeout(
+              resolve,
+              500
+            );
           }
         );
       }
 
-      console.log("==============================");
+      console.log(
+        "=============================="
+      );
+
       console.log(
         "HISTORY IMPORT FINISHED"
       );
-      console.log("Checked: " + checked);
-      console.log("Results found: " + found);
+
       console.log(
-        "Successful: " + successful
+        "Checked: " +
+        checked
       );
-      console.log("Failed: " + failed);
-      console.log("==============================");
+
+      console.log(
+        "Results found: " +
+        found
+      );
+
+      console.log(
+        "Successful: " +
+        successful
+      );
+
+      console.log(
+        "Failed: " +
+        failed
+      );
+
+      console.log(
+        "=============================="
+      );
 
       await interaction.editReply(
-        "✅ History import končan!\n\n" +
-        "📨 Pregledanih: " +
+        "✅ **History import končan!**\n\n" +
+
+        "📨 Pregledanih: **" +
         checked +
-        "\n" +
-        "🎯 Najdenih rezultatov: " +
+        "**\n" +
+
+        "🎯 Najdenih rezultatov: **" +
         found +
-        "\n" +
-        "✅ Uspešnih: " +
+        "**\n" +
+
+        "✅ Uspešnih: **" +
         successful +
-        "\n" +
-        "❌ Failed: " +
-        failed
+        "**\n" +
+
+        "❌ Failed: **" +
+        failed +
+        "**"
       );
     } catch (error) {
       console.error(
@@ -877,35 +1262,44 @@ client.on(
 );
 
 /* =========================================================
-   ERROR HANDLERS
+   ERRORS
 ========================================================= */
 
 client.on(
   "error",
-  function (error) {
+  function (
+    error
+  ) {
     console.error(
       "DISCORD CLIENT ERROR"
     );
+
     console.error(error);
   }
 );
 
 process.on(
   "unhandledRejection",
-  function (error) {
+  function (
+    error
+  ) {
     console.error(
       "UNHANDLED REJECTION"
     );
+
     console.error(error);
   }
 );
 
 process.on(
   "uncaughtException",
-  function (error) {
+  function (
+    error
+  ) {
     console.error(
       "UNCAUGHT EXCEPTION"
     );
+
     console.error(error);
   }
 );
@@ -914,4 +1308,6 @@ process.on(
    LOGIN
 ========================================================= */
 
-client.login(BOT_TOKEN);
+client.login(
+  BOT_TOKEN
+);
