@@ -1,3 +1,4 @@
+js
 const { Client, GatewayIntentBits } = require("discord.js");
 
 const client = new Client({
@@ -8,12 +9,14 @@ const client = new Client({
   ]
 });
 
-console.log("Starting SloTiers Discord Bot");
+console.log("Starting SloTiers Discord Bot V6");
 
 client.once("ready", function () {
-  console.log("SLOTIERS BOT ONLINE");
+  console.log("=================================");
+  console.log("SLOTIERS BOT V6 ONLINE");
   console.log("Bot: " + client.user.tag);
   console.log("Servers: " + client.guilds.cache.size);
+  console.log("=================================");
 });
 
 client.on("messageCreate", async function (message) {
@@ -172,14 +175,16 @@ client.on("messageCreate", async function (message) {
       console.log("Sending result to SloTiers");
 
       const payload = {
-        embeds: [
-          {
-            title: embed.title || null,
-            description: embed.description || null,
-            fields: fields
-          }
-        ]
+        player: playerId,
+        ign: ign,
+        mode: mode,
+        tier: tier,
+        tester: testerId,
+        notes: notes
       };
+
+      console.log("Payload:");
+      console.log(JSON.stringify(payload));
 
       const response = await fetch(
         "https://slotiers.hatchable.site/api/discord/ranking",
