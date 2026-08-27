@@ -103,6 +103,8 @@ const client = new Client({
 
 let syncInProgress = false;
 
+const pendingRankSyncs = new Map();
+
 console.log("Starting SloTiers Discord Bot");
 
 /* =========================================================
@@ -156,12 +158,6 @@ function normalizeMode(value) {
 
 function findMode(roleName) {
   const upper = clean(roleName).toUpperCase();
-
-  /*
-   * Check longest names first so
-   * "SPEAR MACE" and "NETH POT" win
-   * before their shorter components.
-   */
 
   const orderedModes = [
     "SPEAR MACE",
@@ -274,14 +270,6 @@ function getCodeValue(value) {
 ========================================================= */
 
 function getMinecraftUsername(member) {
-  /*
-   * Keep the original behaviour:
-   *
-   * 1. Discord nickname
-   * 2. Discord global name
-   * 3. Discord username
-   */
-
   const nickname =
     clean(member.nickname);
 
@@ -333,11 +321,6 @@ async function fetchAllMembers(guild) {
       console.log(
         `[MEMBERS] Received ${members.size} members`
       );
-
-      /*
-       * If Discord reports a member count,
-       * make sure our result is not obviously incomplete.
-       */
 
       if (
         guild.memberCount &&
@@ -441,10 +424,6 @@ function getMemberRanks(member) {
       role_name: role.name
     });
   }
-
-  /*
-   * Remove duplicates just in case.
-   */
 
   const unique = [];
   const seen = new Set();
@@ -782,11 +761,6 @@ async function syncRanks(guild) {
       "================================="
     );
 
-    /*
-     * IMPORTANT:
-     * This fetches the entire member list.
-     */
-
     const members =
       await fetchAllMembers(
         guild
@@ -940,13 +914,6 @@ async function syncRanks(guild) {
       };
     }
 
-    /*
-     * ONE batch request.
-     *
-     * Do not make one DB request per player
-     * from the Discord bot.
-     */
-
     const response =
       await fetch(
         RANK_SYNC_URL,
@@ -1068,6 +1035,337 @@ async function syncRanks(guild) {
 }
 
 /* =========================================================
+   AUTOMATIC RANK ROLE SYNC
+========================================================= */
+
+function rolesChanged(
+  oldMember,
+  newMember
+) {
+  const oldRoles =
+    new Set(
+      oldMember.roles.cache.keys()
+    );
+
+  const newRoles =
+    new Set(
+      newMember.roles.cache.keys()
+    );
+
+  if (
+    oldRoles.size !==
+    newRoles.size
+  ) {
+    return true;
+  }
+
+  for (const roleId of oldRoles) {
+    if (
+      !newRoles.has(roleId)
+    ) {
+      return true;
+    }
+  }
+
+  for (const roleId of newRoles) {
+    if (
+      !oldRoles.has(roleId)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function queueAutomaticRankSync(
+  oldMember,
+  newMember
+) {
+  try {
+    if (
+      !oldMember ||
+      !newMember
+    ) {
+      return;
+    }
+
+    if (
+      oldMember.user.bot ||
+      newMember.user.bot
+    ) {
+      return;
+    }
+
+    if (
+      !rolesChanged(
+        oldMember,
+        newMember
+      )
+    ) {
+      return;
+    }
+
+    /*
+     * Only trigger the automatic sync
+     * when the role change actually involves
+     * a SloTiers rank role.
+     */
+
+    const oldRankRoles =
+      new Set();
+
+    const newRankRoles =
+      new Set();
+
+    for (
+      const role of
+      oldMember.roles.cache.values()
+    ) {
+      if (
+        role.managed
+      ) {
+        continue;
+      }
+
+      if (
+        parseRankRole(
+          role.name
+        )
+      ) {
+        oldRankRoles.add(
+          role.id
+        );
+      }
+    }
+
+    for (
+      const role of
+      newMember.roles.cache.values()
+    ) {
+      if (
+        role.managed
+      ) {
+        continue;
+      }
+
+      if (
+        parseRankRole(
+          role.name
+        )
+      ) {
+        newRankRoles.add(
+          role.id
+        );
+      }
+    }
+
+    let rankRoleChanged =
+      oldRankRoles.size !==
+      newRankRoles.size;
+
+    if (!rankRoleChanged) {
+      for (
+        const roleId of
+        oldRankRoles
+      ) {
+        if (
+          !newRankRoles.has(
+            roleId
+          )
+        ) {
+          rankRoleChanged = true;
+          break;
+        }
+      }
+    }
+
+    if (!rankRoleChanged) {
+      for (
+        const roleId of
+        newRankRoles
+      ) {
+        if (
+          !oldRankRoles.has(
+            roleId
+          )
+        ) {
+          rankRoleChanged = true;
+          break;
+        }
+      }
+    }
+
+    if (
+      !rankRoleChanged
+    ) {
+      return;
+    }
+
+    const guild =
+      newMember.guild;
+
+    console.log(
+      "================================="
+    );
+
+    console.log(
+      "[AUTO SYNC] RANK ROLE CHANGE DETECTED"
+    );
+
+    console.log(
+      `Player: ${newMember.user.tag}`
+    );
+
+    console.log(
+      `Discord ID: ${newMember.id}`
+    );
+
+    console.log(
+      `Old ranks: ${JSON.stringify(
+        getMemberRanks(oldMember)
+      )}`
+    );
+
+    console.log(
+      `New ranks: ${JSON.stringify(
+        getMemberRanks(newMember)
+      )}`
+    );
+
+    console.log(
+      "================================="
+    );
+
+    /*
+     * Debounce changes.
+     *
+     * Discord can send multiple guildMemberUpdate
+     * events when roles are changed quickly.
+     */
+
+    if (
+      pendingRankSyncs.has(
+        guild.id
+      )
+    ) {
+      clearTimeout(
+        pendingRankSyncs.get(
+          guild.id
+        )
+      );
+    }
+
+    const timeout =
+      setTimeout(
+        async function () {
+          pendingRankSyncs.delete(
+            guild.id
+          );
+
+          if (
+            syncInProgress
+          ) {
+            console.log(
+              "[AUTO SYNC] Full sync already running."
+            );
+
+            console.log(
+              "[AUTO SYNC] Retrying in 10 seconds."
+            );
+
+            setTimeout(
+              function () {
+                queueAutomaticRankSync(
+                  newMember,
+                  newMember
+                );
+              },
+              10000
+            );
+
+            return;
+          }
+
+          try {
+            console.log(
+              "[AUTO SYNC] Starting automatic sync..."
+            );
+
+            const result =
+              await syncRanks(
+                guild
+              );
+
+            console.log(
+              "================================="
+            );
+
+            console.log(
+              "[AUTO SYNC] SYNC FINISHED"
+            );
+
+            console.log(
+              `Players created: ${result.playersCreated}`
+            );
+
+            console.log(
+              `Players updated: ${result.playersUpdated}`
+            );
+
+            console.log(
+              `Ranks added: ${result.ranksAdded}`
+            );
+
+            console.log(
+              `Ranks updated: ${result.ranksUpdated}`
+            );
+
+            console.log(
+              `Failed: ${result.failed}`
+            );
+
+            console.log(
+              "================================="
+            );
+          } catch (error) {
+            console.error(
+              "[AUTO SYNC] SYNC ERROR"
+            );
+
+            console.error(error);
+          }
+        },
+        2000
+      );
+
+    pendingRankSyncs.set(
+      guild.id,
+      timeout
+    );
+  } catch (error) {
+    console.error(
+      "[AUTO SYNC] ROLE CHANGE ERROR"
+    );
+
+    console.error(error);
+  }
+}
+
+client.on(
+  "guildMemberUpdate",
+  function (
+    oldMember,
+    newMember
+  ) {
+    queueAutomaticRankSync(
+      oldMember,
+      newMember
+    );
+  }
+);
+
+/* =========================================================
    BOT READY
 ========================================================= */
 
@@ -1090,6 +1388,10 @@ client.once(
     console.log(
       "Servers: " +
       client.guilds.cache.size
+    );
+
+    console.log(
+      "Automatic rank sync: ENABLED"
     );
 
     console.log(
