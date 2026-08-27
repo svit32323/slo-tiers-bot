@@ -1,5 +1,4 @@
 
-
 ```js
 const { Client, GatewayIntentBits } = require("discord.js");
 
@@ -11,10 +10,10 @@ const client = new Client({
   ]
 });
 
-console.log("Starting SloTiers Discord Bot");
+console.log("Starting SloTiers Discord Bot V4");
 
 client.once("ready", function () {
-  console.log("SLOTIERS BOT ONLINE");
+  console.log("SLOTIERS BOT V4 ONLINE");
   console.log("Bot: " + client.user.tag);
   console.log("Servers: " + client.guilds.cache.size);
 });
@@ -61,16 +60,23 @@ client.on("messageCreate", async function (message) {
         const value = String(field.value || "").trim();
 
         if (name.includes("igralec") || name.includes("player")) {
-          const mention = value.match(/<@!?(\d+)>/);
+          const mention = value.match(/<@!?([0-9]+)>/);
 
           if (mention) {
             playerId = mention[1];
           }
 
-          const ignMatch = value.match(/\(`([^`]+)`\)/);
+          const open = value.indexOf("(");
+          const close = value.lastIndexOf(")");
 
-          if (ignMatch) {
-            ign = ignMatch[1];
+          if (open !== -1 && close > open) {
+            const inside = value.substring(open + 1, close).trim();
+
+            if (inside.startsWith("`") && inside.endsWith("`")) {
+              ign = inside.substring(1, inside.length - 1);
+            } else {
+              ign = inside;
+            }
           }
         }
 
@@ -89,7 +95,7 @@ client.on("messageCreate", async function (message) {
           name.includes("achieved tier")
         ) {
           const tierMatch = value.match(
-            /\b(?:HT1|LT1|HT2|LT2|HT3|LT3|HT4|LT4|HT5|LT5)\b/i
+            /\\b(?:HT1|LT1|HT2|LT2|HT3|LT3|HT4|LT4|HT5|LT5)\\b/i
           );
 
           if (tierMatch) {
@@ -98,7 +104,7 @@ client.on("messageCreate", async function (message) {
         }
 
         if (name.includes("tester") || name.includes("tested by")) {
-          const mention = value.match(/<@!?(\d+)>/);
+          const mention = value.match(/<@!?([0-9]+)>/);
 
           if (mention) {
             testerId = mention[1];
@@ -115,12 +121,14 @@ client.on("messageCreate", async function (message) {
       }
 
       console.log("PARSED RESULT");
+      console.log("-------------------------");
       console.log("Player ID: " + playerId);
       console.log("IGN: " + ign);
       console.log("Mode: " + mode);
       console.log("Tier: " + tier);
       console.log("Tester ID: " + testerId);
       console.log("Notes: " + notes);
+      console.log("-------------------------");
 
       if (!ign || !mode || !tier) {
         console.log("Result is missing required data");
