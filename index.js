@@ -15,6 +15,9 @@ const RESULTS_CHANNEL = "⭐┃rezultati";
 const RANK_SYNC_URL =
   "https://slotiers.hatchable.site/api/discord/sync-ranks";
 
+const MEMBER_SYNC_URL =
+  "https://slotiers.hatchable.site/api/discord/sync-member";
+
 const RANKING_URL =
   "https://slotiers.hatchable.site/api/discord/ranking";
 
@@ -29,19 +32,6 @@ const TIERS = [
   "LT4",
   "HT5",
   "LT5"
-];
-
-const MODES = [
-  "SWORD",
-  "SMP",
-  "UHC",
-  "MACE",
-  "POT",
-  "AXE",
-  "CART",
-  "NETH POT",
-  "VANILLA",
-  "SPEAR MACE"
 ];
 
 const MODE_ALIASES = {
@@ -103,16 +93,16 @@ const client = new Client({
 
 let syncInProgress = false;
 
-const pendingRankSyncs = new Map();
+const pendingMemberSyncs = new Map();
 
 console.log("Starting SloTiers Discord Bot");
 
 /* =========================================================
-   BASIC HELPERS
+   HELPERS
 ========================================================= */
 
 function clean(value) {
-  return String(value || "").trim();
+  return String(value ?? "").trim();
 }
 
 function sleep(ms) {
@@ -120,7 +110,7 @@ function sleep(ms) {
 }
 
 /* =========================================================
-   TIER DETECTION
+   TIER
 ========================================================= */
 
 function findTier(text) {
@@ -134,7 +124,7 @@ function findTier(text) {
 }
 
 /* =========================================================
-   MODE DETECTION
+   MODE
 ========================================================= */
 
 function normalizeMode(value) {
@@ -145,15 +135,7 @@ function normalizeMode(value) {
     .replace(/\s+/g, " ")
     .trim();
 
-  if (!mode) {
-    return "";
-  }
-
-  if (MODE_ALIASES[mode]) {
-    return MODE_ALIASES[mode];
-  }
-
-  return "";
+  return MODE_ALIASES[mode] || "";
 }
 
 function findMode(roleName) {
@@ -180,10 +162,9 @@ function findMode(roleName) {
     const escaped =
       mode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-    const regex =
-      new RegExp(
-        `(?:^|[^A-Z0-9])${escaped}(?:$|[^A-Z0-9])`
-      );
+    const regex = new RegExp(
+      `(?:^|[^A-Z0-9])${escaped}(?:$|[^A-Z0-9])`
+    );
 
     if (regex.test(upper)) {
       return normalizeMode(mode);
@@ -194,7 +175,7 @@ function findMode(roleName) {
 }
 
 /* =========================================================
-   PARSE DISCORD RANK ROLE
+   PARSE RANK ROLE
 ========================================================= */
 
 function parseRankRole(roleName) {
@@ -223,46 +204,42 @@ function parseRankRole(roleName) {
 }
 
 /* =========================================================
-   GET MENTION ID
+   GET MEMBER RANKS
 ========================================================= */
 
-function getMentionId(value) {
-  const match =
-    clean(value).match(/<@!?(\d+)>/);
+function getMemberRanks(member) {
+  const ranks = [];
+  const seen = new Set();
 
-  return match ? match[1] : "";
-}
+  for (const role of member.roles.cache.values()) {
+    if (role.managed) {
+      continue;
+    }
 
-/* =========================================================
-   GET CODE VALUE
-========================================================= */
+    const parsed = parseRankRole(role.name);
 
-function getCodeValue(value) {
-  const text = clean(value);
+    if (!parsed) {
+      continue;
+    }
 
-  const first =
-    text.indexOf("`");
+    const key =
+      `${parsed.mode}:${parsed.tier}`;
 
-  if (first === -1) {
-    return "";
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+
+    ranks.push({
+      mode: parsed.mode,
+      tier: parsed.tier,
+      role_id: role.id,
+      role_name: role.name
+    });
   }
 
-  const second =
-    text.indexOf(
-      "`",
-      first + 1
-    );
-
-  if (second === -1) {
-    return "";
-  }
-
-  return text
-    .substring(
-      first + 1,
-      second
-    )
-    .trim();
+  return ranks;
 }
 
 /* =========================================================
@@ -270,6 +247,14 @@ function getCodeValue(value) {
 ========================================================= */
 
 function getMinecraftUsername(member) {
+  /*
+   * Minecraft IGN:
+   *
+   * 1. Discord nickname
+   * 2. Discord global name
+   * 3. Discord username
+   */
+
   const nickname =
     clean(member.nickname);
 
@@ -280,9 +265,7 @@ function getMinecraftUsername(member) {
   }
 
   const globalName =
-    clean(
-      member.user.globalName
-    );
+    clean(member.user.globalName);
 
   if (globalName) {
     return globalName
@@ -296,7 +279,336 @@ function getMinecraftUsername(member) {
 }
 
 /* =========================================================
-   FETCH ALL DISCORD MEMBERS
+   SEND SINGLE MEMBER TO SLOTIERS
+========================================================= */
+
+async function sendMemberToSloTiers(member) {
+  const ign =
+    getMinecraftUsername(member);
+
+  const ranks =
+    getMemberRanks(member);
+
+  const data = {
+    member: {
+      discord_id: member.id,
+
+      discord_username:
+        member.user.username,
+
+      discord_display_name:
+        member.user.globalName ||
+        member.user.username,
+
+      ign,
+
+      ranks
+    }
+  };
+
+  console.log(
+    "================================="
+  );
+
+  console.log(
+    "[MEMBER SYNC] Sending player"
+  );
+
+  console.log(
+    "Discord: " +
+    member.user.tag
+  );
+
+  console.log(
+    "IGN: " +
+    ign
+  );
+
+  console.log(
+    "Ranks: " +
+    JSON.stringify(ranks)
+  );
+
+  console.log(
+    "================================="
+  );
+
+  const response =
+    await fetch(
+      MEMBER_SYNC_URL,
+      {
+        method: "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+
+          "x-discord-ingest-secret":
+            INGEST_SECRET
+        },
+
+        body:
+          JSON.stringify(data)
+      }
+    );
+
+  const text =
+    await response.text();
+
+  let body;
+
+  try {
+    body =
+      JSON.parse(text);
+  } catch {
+    body = text;
+  }
+
+  console.log(
+    "[MEMBER SYNC] HTTP " +
+    response.status
+  );
+
+  console.log(
+    "[MEMBER SYNC] Response:"
+  );
+
+  console.log(
+    JSON.stringify(
+      body,
+      null,
+      2
+    )
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      `Member sync failed: ${response.status} ${text}`
+    );
+  }
+
+  return body;
+}
+
+/* =========================================================
+   CHECK IF RANK ROLES CHANGED
+========================================================= */
+
+function getRankRoleMap(member) {
+  const result = new Map();
+
+  for (const role of member.roles.cache.values()) {
+    if (role.managed) {
+      continue;
+    }
+
+    const parsed =
+      parseRankRole(role.name);
+
+    if (!parsed) {
+      continue;
+    }
+
+    const key =
+      `${parsed.mode}:${parsed.tier}`;
+
+    result.set(
+      key,
+      role.id
+    );
+  }
+
+  return result;
+}
+
+function rankRolesChanged(
+  oldMember,
+  newMember
+) {
+  const oldRanks =
+    getRankRoleMap(oldMember);
+
+  const newRanks =
+    getRankRoleMap(newMember);
+
+  if (
+    oldRanks.size !==
+    newRanks.size
+  ) {
+    return true;
+  }
+
+  for (const key of oldRanks.keys()) {
+    if (!newRanks.has(key)) {
+      return true;
+    }
+  }
+
+  for (const key of newRanks.keys()) {
+    if (!oldRanks.has(key)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/* =========================================================
+   AUTOMATIC SINGLE PLAYER SYNC
+========================================================= */
+
+function queueMemberSync(member) {
+  const guildId =
+    member.guild.id;
+
+  const memberId =
+    member.id;
+
+  const key =
+    `${guildId}:${memberId}`;
+
+  if (
+    pendingMemberSyncs.has(key)
+  ) {
+    clearTimeout(
+      pendingMemberSyncs.get(key)
+    );
+  }
+
+  const timeout =
+    setTimeout(
+      async function () {
+        pendingMemberSyncs.delete(key);
+
+        try {
+          /*
+           * Fetch the newest version of the member.
+           * This makes sure we sync the FINAL role state
+           * if several roles were changed quickly.
+           */
+
+          const freshMember =
+            await member.guild.members.fetch(
+              member.id
+            );
+
+          if (
+            freshMember.user.bot
+          ) {
+            return;
+          }
+
+          await sendMemberToSloTiers(
+            freshMember
+          );
+
+          console.log(
+            `[AUTO SYNC] ${freshMember.user.tag} synced successfully`
+          );
+        } catch (error) {
+          console.error(
+            "[AUTO SYNC] SINGLE MEMBER SYNC ERROR"
+          );
+
+          console.error(error);
+        }
+      },
+      1500
+    );
+
+  pendingMemberSyncs.set(
+    key,
+    timeout
+  );
+}
+
+/* =========================================================
+   DISCORD ROLE CHANGE EVENT
+========================================================= */
+
+client.on(
+  "guildMemberUpdate",
+  async function (
+    oldMember,
+    newMember
+  ) {
+    try {
+      if (
+        newMember.user.bot
+      ) {
+        return;
+      }
+
+      /*
+       * Ignore nickname/avatar/etc.
+       * Only react to actual SloTiers rank changes.
+       */
+
+      if (
+        !rankRolesChanged(
+          oldMember,
+          newMember
+        )
+      ) {
+        return;
+      }
+
+      console.log(
+        "================================="
+      );
+
+      console.log(
+        "[AUTO SYNC] RANK CHANGE DETECTED"
+      );
+
+      console.log(
+        "Player: " +
+        newMember.user.tag
+      );
+
+      console.log(
+        "OLD RANKS:"
+      );
+
+      console.log(
+        JSON.stringify(
+          getMemberRanks(oldMember),
+          null,
+          2
+        )
+      );
+
+      console.log(
+        "NEW RANKS:"
+      );
+
+      console.log(
+        JSON.stringify(
+          getMemberRanks(newMember),
+          null,
+          2
+        )
+      );
+
+      console.log(
+        "================================="
+      );
+
+      queueMemberSync(
+        newMember
+      );
+    } catch (error) {
+      console.error(
+        "[AUTO SYNC] guildMemberUpdate ERROR"
+      );
+
+      console.error(error);
+    }
+  }
+);
+
+/* =========================================================
+   FETCH ALL MEMBERS
 ========================================================= */
 
 async function fetchAllMembers(guild) {
@@ -324,7 +636,8 @@ async function fetchAllMembers(guild) {
 
       if (
         guild.memberCount &&
-        members.size < guild.memberCount
+        members.size <
+          guild.memberCount
       ) {
         lastError =
           new Error(
@@ -332,21 +645,12 @@ async function fetchAllMembers(guild) {
             `${members.size}/${guild.memberCount}`
           );
 
-        console.warn(
-          `[MEMBERS] Only received ` +
-          `${members.size}/${guild.memberCount}`
-        );
-
         if (attempt < 8) {
           const wait =
             Math.min(
               30000,
               attempt * 4000
             );
-
-          console.log(
-            `[MEMBERS] Retrying in ${wait}ms`
-          );
 
           await sleep(wait);
           continue;
@@ -377,10 +681,6 @@ async function fetchAllMembers(guild) {
           attempt * 4000
         );
 
-      console.log(
-        `[MEMBERS] Waiting ${wait}ms before retry`
-      );
-
       await sleep(wait);
     }
   }
@@ -394,57 +694,267 @@ async function fetchAllMembers(guild) {
 }
 
 /* =========================================================
-   GET ALL RANKS FROM MEMBER
+   COMPLETE SERVER SYNC
 ========================================================= */
 
-function getMemberRanks(member) {
-  const ranks = [];
+async function syncRanks(guild) {
+  if (syncInProgress) {
+    throw new Error(
+      "Sync je že v teku."
+    );
+  }
 
-  for (
-    const role of
-    member.roles.cache.values()
-  ) {
-    if (role.managed) {
-      continue;
+  syncInProgress = true;
+
+  try {
+    console.log(
+      "================================="
+    );
+
+    console.log(
+      "STARTING COMPLETE RANK SYNC"
+    );
+
+    console.log(
+      "Guild: " +
+      guild.name
+    );
+
+    console.log(
+      "Guild ID: " +
+      guild.id
+    );
+
+    console.log(
+      "Member count: " +
+      guild.memberCount
+    );
+
+    console.log(
+      "================================="
+    );
+
+    const members =
+      await fetchAllMembers(guild);
+
+    const players = [];
+
+    let membersChecked = 0;
+    let membersWithRanks = 0;
+    let ranksFound = 0;
+    let botsSkipped = 0;
+    let noRankSkipped = 0;
+
+    for (
+      const member of members
+    ) {
+      membersChecked++;
+
+      if (
+        member.user.bot
+      ) {
+        botsSkipped++;
+        continue;
+      }
+
+      const ranks =
+        getMemberRanks(member);
+
+      if (
+        ranks.length === 0
+      ) {
+        noRankSkipped++;
+        continue;
+      }
+
+      membersWithRanks++;
+
+      ranksFound +=
+        ranks.length;
+
+      const ign =
+        getMinecraftUsername(member);
+
+      if (!ign) {
+        noRankSkipped++;
+        continue;
+      }
+
+      players.push({
+        discord_id:
+          member.id,
+
+        discord_username:
+          member.user.username,
+
+        discord_display_name:
+          member.user.globalName ||
+          member.user.username,
+
+        ign,
+
+        ranks
+      });
     }
 
-    const parsed =
-      parseRankRole(
-        role.name
+    console.log(
+      `[SYNC] Players: ${players.length}`
+    );
+
+    if (
+      players.length === 0
+    ) {
+      return {
+        membersChecked,
+        membersWithRanks,
+        ranksFound,
+        botsSkipped,
+        noRankSkipped,
+        playersCreated: 0,
+        playersUpdated: 0,
+        ranksAdded: 0,
+        ranksUpdated: 0,
+        failed: 0
+      };
+    }
+
+    const response =
+      await fetch(
+        RANK_SYNC_URL,
+        {
+          method: "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+
+            "x-discord-ingest-secret":
+              INGEST_SECRET
+          },
+
+          body:
+            JSON.stringify({
+              guild_id:
+                guild.id,
+
+              guild_name:
+                guild.name,
+
+              players
+            })
+        }
       );
 
-    if (!parsed) {
-      continue;
+    const text =
+      await response.text();
+
+    let body;
+
+    try {
+      body =
+        JSON.parse(text);
+    } catch {
+      body = text;
     }
 
-    ranks.push({
-      mode: parsed.mode,
-      tier: parsed.tier,
-      role_id: role.id,
-      role_name: role.name
-    });
-  }
-
-  const unique = [];
-  const seen = new Set();
-
-  for (const rank of ranks) {
-    const key =
-      `${rank.mode}:${rank.tier}`;
-
-    if (seen.has(key)) {
-      continue;
+    if (!response.ok) {
+      throw new Error(
+        "SloTiers sync failed: " +
+        response.status +
+        " " +
+        text
+      );
     }
 
-    seen.add(key);
-    unique.push(rank);
-  }
+    return {
+      membersChecked,
+      membersWithRanks,
+      ranksFound,
+      botsSkipped,
+      noRankSkipped,
 
-  return unique;
+      playersCreated:
+        Number(
+          body.players_added ||
+          body.players_created ||
+          0
+        ),
+
+      playersUpdated:
+        Number(
+          body.players_updated ||
+          0
+        ),
+
+      ranksAdded:
+        Number(
+          body.ranks_added ||
+          0
+        ),
+
+      ranksUpdated:
+        Number(
+          body.ranks_updated ||
+          0
+        ),
+
+      failed:
+        Number(
+          body.failed ||
+          0
+        )
+    };
+  } finally {
+    syncInProgress = false;
+  }
 }
 
 /* =========================================================
-   PARSE SLOTIERS RESULT EMBED
+   EMBED HELPERS
+========================================================= */
+
+function getMentionId(value) {
+  const match =
+    clean(value).match(
+      /<@!?(\d+)>/
+    );
+
+  return match
+    ? match[1]
+    : "";
+}
+
+function getCodeValue(value) {
+  const text =
+    clean(value);
+
+  const first =
+    text.indexOf("`");
+
+  if (first === -1) {
+    return "";
+  }
+
+  const second =
+    text.indexOf(
+      "`",
+      first + 1
+    );
+
+  if (second === -1) {
+    return "";
+  }
+
+  return text
+    .substring(
+      first + 1,
+      second
+    )
+    .trim();
+}
+
+/* =========================================================
+   PARSE RESULT EMBED
 ========================================================= */
 
 function parseEmbed(embed) {
@@ -475,7 +985,9 @@ function parseEmbed(embed) {
   const fields =
     embed.fields || [];
 
-  for (const field of fields) {
+  for (
+    const field of fields
+  ) {
     const name =
       String(
         field.name || ""
@@ -491,14 +1003,10 @@ function parseEmbed(embed) {
       name.includes("player")
     ) {
       player =
-        getMentionId(
-          value
-        );
+        getMentionId(value);
 
       const code =
-        getCodeValue(
-          value
-        );
+        getCodeValue(value);
 
       if (code) {
         ign = code;
@@ -531,9 +1039,7 @@ function parseEmbed(embed) {
       name.includes("tested by")
     ) {
       tester =
-        getMentionId(
-          value
-        );
+        getMentionId(value);
     }
 
     if (
@@ -565,7 +1071,7 @@ function parseEmbed(embed) {
 }
 
 /* =========================================================
-   SEND NORMAL RESULT
+   SEND RESULT
 ========================================================= */
 
 async function sendToSloTiers(data) {
@@ -634,21 +1140,12 @@ async function processMessage(
     }
 
     console.log(
-      "=============================="
-    );
-
-    console.log(
       "SLOTIERS RESULT DETECTED"
     );
 
     console.log(
       "Source: " +
       source
-    );
-
-    console.log(
-      "Message ID: " +
-      message.id
     );
 
     console.log(
@@ -671,36 +1168,8 @@ async function processMessage(
       data.tier
     );
 
-    console.log(
-      "Tester: " +
-      data.tester
-    );
-
-    console.log(
-      "Notes: " +
-      data.notes
-    );
-
-    console.log(
-      "=============================="
-    );
-
     const result =
-      await sendToSloTiers(
-        data
-      );
-
-    console.log(
-      "SloTiers status: " +
-      result.status
-    );
-
-    console.log(
-      "SloTiers response: " +
-      JSON.stringify(
-        result.body
-      )
-    );
+      await sendToSloTiers(data);
 
     if (result.ok) {
       console.log(
@@ -711,7 +1180,13 @@ async function processMessage(
     }
 
     console.log(
-      "SloTiers rejected the result"
+      "SloTiers rejected result"
+    );
+
+    console.log(
+      JSON.stringify(
+        result.body
+      )
     );
 
     return false;
@@ -721,652 +1196,7 @@ async function processMessage(
 }
 
 /* =========================================================
-   COMPLETE RANK SYNC
-========================================================= */
-
-async function syncRanks(guild) {
-  if (syncInProgress) {
-    throw new Error(
-      "Sync je že v teku."
-    );
-  }
-
-  syncInProgress = true;
-
-  try {
-    console.log(
-      "================================="
-    );
-
-    console.log(
-      "STARTING COMPLETE RANK SYNC"
-    );
-
-    console.log(
-      "Guild: " +
-      guild.name
-    );
-
-    console.log(
-      "Guild ID: " +
-      guild.id
-    );
-
-    console.log(
-      "Discord memberCount: " +
-      guild.memberCount
-    );
-
-    console.log(
-      "================================="
-    );
-
-    const members =
-      await fetchAllMembers(
-        guild
-      );
-
-    console.log(
-      `[SYNC] Checking ${members.length} members`
-    );
-
-    const players = [];
-
-    let membersChecked = 0;
-    let membersWithRanks = 0;
-    let ranksFound = 0;
-    let botsSkipped = 0;
-    let noRankSkipped = 0;
-
-    for (
-      const member of members
-    ) {
-      membersChecked++;
-
-      if (
-        member.user.bot
-      ) {
-        botsSkipped++;
-        continue;
-      }
-
-      const ranks =
-        getMemberRanks(
-          member
-        );
-
-      if (
-        ranks.length === 0
-      ) {
-        noRankSkipped++;
-
-        console.log(
-          `[SYNC] NO RANK: ` +
-          `${member.user.tag}`
-        );
-
-        continue;
-      }
-
-      membersWithRanks++;
-
-      ranksFound +=
-        ranks.length;
-
-      const ign =
-        getMinecraftUsername(
-          member
-        );
-
-      if (!ign) {
-        noRankSkipped++;
-        continue;
-      }
-
-      console.log(
-        `[SYNC] ${membersChecked}/${members.length} ` +
-        `${member.user.tag} -> ${ign}`
-      );
-
-      console.log(
-        `[SYNC] Ranks: ` +
-        JSON.stringify(ranks)
-      );
-
-      players.push({
-        discord_id:
-          member.id,
-
-        discord_username:
-          member.user.username,
-
-        discord_display_name:
-          member.user.globalName ||
-          member.user.username,
-
-        ign,
-
-        ranks
-      });
-    }
-
-    console.log(
-      "================================="
-    );
-
-    console.log(
-      "COMPLETE MEMBER SCAN FINISHED"
-    );
-
-    console.log(
-      "Members checked: " +
-      membersChecked
-    );
-
-    console.log(
-      "Discord memberCount: " +
-      guild.memberCount
-    );
-
-    console.log(
-      "Members with ranks: " +
-      membersWithRanks
-    );
-
-    console.log(
-      "Ranks found: " +
-      ranksFound
-    );
-
-    console.log(
-      "Bots skipped: " +
-      botsSkipped
-    );
-
-    console.log(
-      "No rank skipped: " +
-      noRankSkipped
-    );
-
-    console.log(
-      "Players to sync: " +
-      players.length
-    );
-
-    console.log(
-      "================================="
-    );
-
-    if (
-      players.length === 0
-    ) {
-      return {
-        membersChecked,
-        membersWithRanks,
-        ranksFound,
-        botsSkipped,
-        noRankSkipped,
-        playersCreated: 0,
-        playersUpdated: 0,
-        ranksAdded: 0,
-        ranksUpdated: 0,
-        failed: 0
-      };
-    }
-
-    const response =
-      await fetch(
-        RANK_SYNC_URL,
-        {
-          method: "POST",
-
-          headers: {
-            "Content-Type":
-              "application/json",
-
-            "x-discord-ingest-secret":
-              INGEST_SECRET
-          },
-
-          body:
-            JSON.stringify({
-              guild_id:
-                guild.id,
-
-              guild_name:
-                guild.name,
-
-              players
-            })
-        }
-      );
-
-    const text =
-      await response.text();
-
-    let body;
-
-    try {
-      body =
-        JSON.parse(text);
-    } catch {
-      body = text;
-    }
-
-    console.log(
-      "================================="
-    );
-
-    console.log(
-      "SLOTIERS SYNC STATUS: " +
-      response.status
-    );
-
-    console.log(
-      "SLOTIERS SYNC RESPONSE:"
-    );
-
-    console.log(
-      JSON.stringify(
-        body,
-        null,
-        2
-      )
-    );
-
-    console.log(
-      "================================="
-    );
-
-    if (!response.ok) {
-      throw new Error(
-        "SloTiers sync failed: " +
-        response.status +
-        " " +
-        text
-      );
-    }
-
-    return {
-      membersChecked,
-
-      membersWithRanks,
-
-      ranksFound,
-
-      botsSkipped,
-
-      noRankSkipped,
-
-      playersCreated:
-        Number(
-          body.players_added ||
-          body.players_created ||
-          0
-        ),
-
-      playersUpdated:
-        Number(
-          body.players_updated ||
-          0
-        ),
-
-      ranksAdded:
-        Number(
-          body.ranks_added ||
-          0
-        ),
-
-      ranksUpdated:
-        Number(
-          body.ranks_updated ||
-          0
-        ),
-
-      failed:
-        Number(
-          body.failed ||
-          0
-        )
-    };
-  } finally {
-    syncInProgress = false;
-  }
-}
-
-/* =========================================================
-   AUTOMATIC RANK ROLE SYNC
-========================================================= */
-
-function rolesChanged(
-  oldMember,
-  newMember
-) {
-  const oldRoles =
-    new Set(
-      oldMember.roles.cache.keys()
-    );
-
-  const newRoles =
-    new Set(
-      newMember.roles.cache.keys()
-    );
-
-  if (
-    oldRoles.size !==
-    newRoles.size
-  ) {
-    return true;
-  }
-
-  for (const roleId of oldRoles) {
-    if (
-      !newRoles.has(roleId)
-    ) {
-      return true;
-    }
-  }
-
-  for (const roleId of newRoles) {
-    if (
-      !oldRoles.has(roleId)
-    ) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function queueAutomaticRankSync(
-  oldMember,
-  newMember
-) {
-  try {
-    if (
-      !oldMember ||
-      !newMember
-    ) {
-      return;
-    }
-
-    if (
-      oldMember.user.bot ||
-      newMember.user.bot
-    ) {
-      return;
-    }
-
-    if (
-      !rolesChanged(
-        oldMember,
-        newMember
-      )
-    ) {
-      return;
-    }
-
-    /*
-     * Only trigger the automatic sync
-     * when the role change actually involves
-     * a SloTiers rank role.
-     */
-
-    const oldRankRoles =
-      new Set();
-
-    const newRankRoles =
-      new Set();
-
-    for (
-      const role of
-      oldMember.roles.cache.values()
-    ) {
-      if (
-        role.managed
-      ) {
-        continue;
-      }
-
-      if (
-        parseRankRole(
-          role.name
-        )
-      ) {
-        oldRankRoles.add(
-          role.id
-        );
-      }
-    }
-
-    for (
-      const role of
-      newMember.roles.cache.values()
-    ) {
-      if (
-        role.managed
-      ) {
-        continue;
-      }
-
-      if (
-        parseRankRole(
-          role.name
-        )
-      ) {
-        newRankRoles.add(
-          role.id
-        );
-      }
-    }
-
-    let rankRoleChanged =
-      oldRankRoles.size !==
-      newRankRoles.size;
-
-    if (!rankRoleChanged) {
-      for (
-        const roleId of
-        oldRankRoles
-      ) {
-        if (
-          !newRankRoles.has(
-            roleId
-          )
-        ) {
-          rankRoleChanged = true;
-          break;
-        }
-      }
-    }
-
-    if (!rankRoleChanged) {
-      for (
-        const roleId of
-        newRankRoles
-      ) {
-        if (
-          !oldRankRoles.has(
-            roleId
-          )
-        ) {
-          rankRoleChanged = true;
-          break;
-        }
-      }
-    }
-
-    if (
-      !rankRoleChanged
-    ) {
-      return;
-    }
-
-    const guild =
-      newMember.guild;
-
-    console.log(
-      "================================="
-    );
-
-    console.log(
-      "[AUTO SYNC] RANK ROLE CHANGE DETECTED"
-    );
-
-    console.log(
-      `Player: ${newMember.user.tag}`
-    );
-
-    console.log(
-      `Discord ID: ${newMember.id}`
-    );
-
-    console.log(
-      `Old ranks: ${JSON.stringify(
-        getMemberRanks(oldMember)
-      )}`
-    );
-
-    console.log(
-      `New ranks: ${JSON.stringify(
-        getMemberRanks(newMember)
-      )}`
-    );
-
-    console.log(
-      "================================="
-    );
-
-    /*
-     * Debounce changes.
-     *
-     * Discord can send multiple guildMemberUpdate
-     * events when roles are changed quickly.
-     */
-
-    if (
-      pendingRankSyncs.has(
-        guild.id
-      )
-    ) {
-      clearTimeout(
-        pendingRankSyncs.get(
-          guild.id
-        )
-      );
-    }
-
-    const timeout =
-      setTimeout(
-        async function () {
-          pendingRankSyncs.delete(
-            guild.id
-          );
-
-          if (
-            syncInProgress
-          ) {
-            console.log(
-              "[AUTO SYNC] Full sync already running."
-            );
-
-            console.log(
-              "[AUTO SYNC] Retrying in 10 seconds."
-            );
-
-            setTimeout(
-              function () {
-                queueAutomaticRankSync(
-                  newMember,
-                  newMember
-                );
-              },
-              10000
-            );
-
-            return;
-          }
-
-          try {
-            console.log(
-              "[AUTO SYNC] Starting automatic sync..."
-            );
-
-            const result =
-              await syncRanks(
-                guild
-              );
-
-            console.log(
-              "================================="
-            );
-
-            console.log(
-              "[AUTO SYNC] SYNC FINISHED"
-            );
-
-            console.log(
-              `Players created: ${result.playersCreated}`
-            );
-
-            console.log(
-              `Players updated: ${result.playersUpdated}`
-            );
-
-            console.log(
-              `Ranks added: ${result.ranksAdded}`
-            );
-
-            console.log(
-              `Ranks updated: ${result.ranksUpdated}`
-            );
-
-            console.log(
-              `Failed: ${result.failed}`
-            );
-
-            console.log(
-              "================================="
-            );
-          } catch (error) {
-            console.error(
-              "[AUTO SYNC] SYNC ERROR"
-            );
-
-            console.error(error);
-          }
-        },
-        2000
-      );
-
-    pendingRankSyncs.set(
-      guild.id,
-      timeout
-    );
-  } catch (error) {
-    console.error(
-      "[AUTO SYNC] ROLE CHANGE ERROR"
-    );
-
-    console.error(error);
-  }
-}
-
-client.on(
-  "guildMemberUpdate",
-  function (
-    oldMember,
-    newMember
-  ) {
-    queueAutomaticRankSync(
-      oldMember,
-      newMember
-    );
-  }
-);
-
-/* =========================================================
-   BOT READY
+   READY
 ========================================================= */
 
 client.once(
@@ -1391,7 +1221,11 @@ client.once(
     );
 
     console.log(
-      "Automatic rank sync: ENABLED"
+      "GuildMembers intent: ENABLED"
+    );
+
+    console.log(
+      "Automatic single-player rank sync: ENABLED"
     );
 
     console.log(
@@ -1411,7 +1245,7 @@ client.once(
             PermissionFlagsBits.Administrator
           );
 
-      const syncRanks =
+      const syncRanksCommand =
         new SlashCommandBuilder()
           .setName(
             "sync-ranks"
@@ -1442,7 +1276,7 @@ client.once(
           {
             body: [
               importHistory.toJSON(),
-              syncRanks.toJSON()
+              syncRanksCommand.toJSON()
             ]
           }
         );
@@ -1463,7 +1297,7 @@ client.once(
 );
 
 /* =========================================================
-   AUTOMATIC RESULT LISTENER
+   MESSAGE LISTENER
 ========================================================= */
 
 client.on(
@@ -1487,7 +1321,7 @@ client.on(
 );
 
 /* =========================================================
-   SLASH COMMANDS
+   COMMANDS
 ========================================================= */
 
 client.on(
